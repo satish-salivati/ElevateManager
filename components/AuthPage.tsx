@@ -22,6 +22,11 @@ const AuthPage: React.FC = () => {
             if (isLogin) {
                 await signIn(email, password);
             } else {
+                if (!organizationName.trim()) {
+                    setError("Organization name is required to sign up.");
+                    setIsLoading(false);
+                    return;
+                }
                 await signUp(email, password, organizationName);
             }
             // onAuthStateChanged in App.tsx will handle navigation
@@ -31,6 +36,8 @@ const AuthPage: React.FC = () => {
                 setError('Invalid email or password. Please try again.');
             } else if (err.code === 'auth/email-already-in-use') {
                 setError('An account with this email already exists. Please log in.');
+            } else if (err.code === 'permission-denied' || (err.message && err.message.toLowerCase().includes('permission denied'))) {
+                setError("Database permission error. This usually means your Firestore security rules aren't set up correctly. Please go to your Firebase Console, find 'Firestore Database' > 'Rules', and update them to allow writes for authenticated users. After saving the new rules, try signing up again.");
             } else {
                 setError('An unknown error occurred. Please check the console and try again.');
             }
