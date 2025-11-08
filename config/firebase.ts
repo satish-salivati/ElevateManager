@@ -10,9 +10,10 @@
 // private is essential for the security of your app and its user data.
 // =================================================================================
 
-import { initializeApp, FirebaseApp } from "firebase/app";
-import { getAuth, Auth } from "firebase/auth";
-import { getFirestore, Firestore } from "firebase/firestore";
+// Fix: Use Firebase v8 compat imports to resolve module errors.
+import firebase from "firebase/compat/app";
+import "firebase/compat/auth";
+import "firebase/compat/firestore";
 
 // Your unique Firebase configuration object.
 const firebaseConfig = {
@@ -30,9 +31,9 @@ export const isFirebaseConfigured = !!firebaseConfig.apiKey;
 
 
 // Singleton instances (You don't need to change anything below this line)
-let app: FirebaseApp | null = null;
-let auth: Auth | null = null;
-let db: Firestore | null = null;
+let app: firebase.app.App | null = null;
+let auth: firebase.auth.Auth | null = null;
+let db: firebase.firestore.Firestore | null = null;
 
 // This function initializes Firebase and MUST be called before any other Firebase service is used.
 function initializeFirebase() {
@@ -44,9 +45,14 @@ function initializeFirebase() {
     }
     
     try {
-        app = initializeApp(firebaseConfig);
-        auth = getAuth(app);
-        db = getFirestore(app);
+        // Fix: Use compat initialization
+        if (!firebase.apps.length) {
+            app = firebase.initializeApp(firebaseConfig);
+        } else {
+            app = firebase.app();
+        }
+        auth = firebase.auth(app);
+        db = firebase.firestore(app);
     } catch (error) {
         console.error("Failed to initialize Firebase:", error);
         // Reset instances if initialization fails
@@ -57,7 +63,7 @@ function initializeFirebase() {
 }
 
 // Getter functions that ensure initialization before returning the service instance.
-export const getFirebaseAuth = (): Auth => {
+export const getFirebaseAuth = (): firebase.auth.Auth => {
     if (!auth) {
         initializeFirebase();
     }
@@ -67,7 +73,7 @@ export const getFirebaseAuth = (): Auth => {
     return auth;
 };
 
-export const getDB = (): Firestore => {
+export const getDB = (): firebase.firestore.Firestore => {
     if (!db) {
         initializeFirebase();
     }
