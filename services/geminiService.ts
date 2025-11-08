@@ -1,13 +1,10 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { MeetingDetails, AgendaItem, ActionItem, StructuredSummary, TeamMember, Conversation, GrowthSuggestions } from "../types";
 
-const API_KEY = process.env.API_KEY;
-
-if (!API_KEY) {
-  throw new Error("API_KEY environment variable not set");
-}
-
-const ai = new GoogleGenAI({ apiKey: API_KEY });
+// FIX: Per coding guidelines, the GoogleGenAI client must be initialized directly
+// with `process.env.API_KEY`. The availability of this key is assumed.
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const agendaSchema = {
   type: Type.ARRAY,
@@ -59,13 +56,13 @@ const growthSuggestionsSchema = {
     properties: {
         articles: {
             type: Type.ARRAY,
-            description: "Links to 1-2 relevant, free, and publicly accessible articles.",
+            description: "Links to 1-2 relevant, free, and publicly accessible articles or well-known books.",
             items: {
                 type: Type.OBJECT,
                 properties: {
-                    title: { type: Type.STRING, description: "The title of the article." },
-                    url: { type: Type.STRING, description: "The full URL to the article." },
-                    description: { type: Type.STRING, description: "A one-sentence explanation of why this article is relevant." }
+                    title: { type: Type.STRING, description: "The title of the article or book." },
+                    url: { type: Type.STRING, description: "The full URL if it's an article. Use a google.com search link for a book." },
+                    description: { type: Type.STRING, description: "A one-sentence explanation of why this resource is relevant." }
                 },
                 required: ["title", "url", "description"]
             }
@@ -269,27 +266,21 @@ export const generateSummary = async (content: SummaryContent): Promise<Structur
 
     const prompt = `
       You are an expert manager's assistant. You are tasked with writing a structured summary of a one-on-one meeting.
-      Analyze the following information and structure the output as a JSON object.
+      Analyze the following information:
       - Meeting with: ${content.details.employeeName} (${content.details.role})
       - Key Goal: ${content.details.goal}
       - Topics Discussed (from agenda): ${completedAgenda || 'None formally checked off.'}
       - Manager's Notes: """${content.notes}"""
       - Action Items, Statuses & Comments: ${newActionItems || 'None.'}
 
-      Your task is to synthesize this information into a JSON object with five keys:
-      1. "keyPoints": An array of strings, where each string is a key topic or discussion point from the notes.
-      2. "decisions": An array of strings, where each string is a specific, concrete decision that was made. If no clear decisions were made, this can be an empty array.
-      3. "sentiment": A single string that describes the overall sentiment of the meeting (e.g., "Productive and optimistic", "Focused on problem-solving", "Candid and constructive").
-      4. "impactScore": A numerical score from 1 to 100 on the meeting's overall effectiveness. A high score (85+) means the meeting was highly effective (clear action items, addressed goals, positive sentiment). A low score (< 50) indicates it was ineffective (no clear outcomes, negative sentiment, no progress).
-      5. "reasoning": A brief, one-sentence justification for the impact score provided.
-
-      Do not simply list the notes. Create a coherent synthesis.
-      Return ONLY the JSON object.
+      Your task is to synthesize this information into a JSON object conforming to the provided schema.
+      Provide a coherent synthesis, not just a list of the notes.
+      - Base the impactScore on factors like whether goals were addressed, clear action items were created, and the overall sentiment.
     `;
 
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-2.5-pro', // Using the more powerful model for better synthesis
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
@@ -299,7 +290,7 @@ export const generateSummary = async (content: SummaryContent): Promise<Structur
         const jsonText = response.text.trim();
         const summaryObject = JSON.parse(jsonText);
 
-        if (summaryObject && Array.isArray(summaryObject.keyPoints) && Array.isArray(summaryObject.decisions) && typeof summaryObject.sentiment === 'string' && typeof summaryObject.impactScore === 'number' && typeof summaryObject.reasoning === 'string') {
+        if (summaryObject && summaryObject.keyPoints && summaryObject.impactScore !== undefined) {
             return summaryObject as StructuredSummary;
         } else {
             throw new Error("Invalid response format from Gemini API for summary.");
@@ -309,7 +300,7 @@ export const generateSummary = async (content: SummaryContent): Promise<Structur
         console.error("Error generating summary:", error);
         return {
             keyPoints: ["Could not generate a structured summary. Please refer to your notes."],
-            decisions: [],
+            decisions: ["No specific decisions were logged."],
             sentiment: "Summary generation failed.",
             impactScore: 0,
             reasoning: "Failed to generate an impact score due to an API error."
@@ -318,40 +309,44 @@ export const generateSummary = async (content: SummaryContent): Promise<Structur
 };
 
 export const getGrowthSuggestions = async (role: string, aspiration: string): Promise<GrowthSuggestions> => {
+    // A more direct prompt for the model, focusing on generating ideas rather than finding real-time links,
+    // which is more reliable without a search tool.
     const prompt = `
-        An employee, currently a "${role}", has a long-term career aspiration to "${aspiration}".
-        Provide a concise, actionable set of resources to help them.
+        Act as a career coach. An employee who is a "${role}" wants to become a "${aspiration}".
+        Based on this career path, generate a list of actionable growth suggestions.
         
-        Your task is to generate a response in the form of a single, valid JSON object string with three keys: "articles", "projects", and "skills".
+        Provide:
+        - 1-2 specific skills they should focus on developing.
+        - 1-2 ideas for small, practical projects they could do to build those skills.
+        - 1-2 relevant, well-known articles or books that would be beneficial. For articles, provide a real, public URL. For books, provide a URL to a google.com search for the book title and author.
 
-        IMPORTANT INSTRUCTIONS:
-        1.  **Use Search:** You MUST use your search tool to find real, currently accessible articles.
-        2.  **Verify URLs:** VERIFY that each URL you provide leads to a valid, public webpage and is NOT a 404 error. The links must not be behind a hard paywall.
-        3.  **Source Quality:** Prioritize articles from reputable sources (e.g., Harvard Business Review, First Round Review, major tech blogs like Martin Fowler's, official documentation).
-        4.  **JSON Structure:**
-            - The "articles" key should be an array of objects. Each object must have "title", "url", and a "description" (a one-sentence explanation of why the article is relevant).
-            - The "projects" key should be an array of strings, suggesting 1-2 small, practical projects.
-            - The "skills" key should be an array of strings, listing 1-2 crucial skills to develop.
-
-        Return ONLY the raw JSON object string. Do not wrap it in markdown backticks or any other text.
+        Return the response as a JSON object that strictly adheres to the provided schema.
     `;
 
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
+            // Upgrading to Pro for better quality suggestions and adherence to the schema.
+            model: 'gemini-2.5-pro',
             contents: prompt,
             config: {
-                tools: [{googleSearch: {}}],
+                responseMimeType: "application/json",
+                responseSchema: growthSuggestionsSchema,
             }
         });
         const jsonText = response.text.trim();
-        // Clean up potential markdown backticks that the model might add despite instructions
-        const cleanedJsonText = jsonText.replace(/^```json\n/, '').replace(/\n```$/, '');
-        return JSON.parse(cleanedJsonText);
+        // Add a validation step before parsing
+        if (jsonText.startsWith('{') && jsonText.endsWith('}')) {
+             const suggestions = JSON.parse(jsonText);
+             // Basic validation of the parsed object
+             if (suggestions.articles && suggestions.projects && suggestions.skills) {
+                 return suggestions;
+             }
+        }
+        throw new Error("Received an invalid JSON structure from the API.");
     } catch (error) {
         console.error("Error generating growth suggestions:", error);
         return {
-            skills: ["Could not generate suggestions. Please try again."],
+            skills: ["Could not generate suggestions due to an API error."],
             articles: [],
             projects: []
         };
