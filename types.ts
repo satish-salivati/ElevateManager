@@ -1,5 +1,10 @@
 export type ActionItemStatus = 'Pending' | 'In Progress' | 'Completed' | 'Blocked';
 
+export type AppError = {
+  type: 'PROFILE_CREATION_FAILED' | 'FETCH_FAILED' | 'ADMIN_INDEX_REQUIRED' | 'ADMIN_PERMISSIONS_REQUIRED';
+  message: string;
+} | null;
+
 export interface AppUser {
   uid: string;
   email: string | null;
