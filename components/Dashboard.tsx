@@ -1,5 +1,5 @@
 import React from 'react';
-import { TeamMember } from '../types';
+import { TeamMember, AppError } from '../types';
 import TeamPulse from './TeamPulse';
 import FocusAreasInsight from './FocusAreasInsight';
 import ProjectHealthInsight from './ProjectHealthInsight';
@@ -11,7 +11,7 @@ import Button from './common/Button';
 
 interface DashboardProps {
   teamMembers: TeamMember[];
-  error: string | null;
+  error: AppError | null;
   onRetry: () => void;
   isLoading: boolean;
 }
@@ -36,7 +36,7 @@ const Dashboard: React.FC<DashboardProps> = ({ teamMembers, error, onRetry, isLo
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <h3 className="mt-2 text-lg font-medium text-red-900">Failed to Load Dashboard</h3>
-            <p className="mt-1 text-sm text-red-700 max-w-xl mx-auto">{error}</p>
+            <p className="mt-1 text-sm text-red-700 max-w-xl mx-auto">{error.message}</p>
             <div className="mt-6">
                 <Button onClick={onRetry}>
                     Retry
