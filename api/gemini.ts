@@ -1,40 +1,27 @@
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { MeetingDetails, StructuredSummary, TeamMember, GrowthSuggestions } from "../types";
 
 // This function runs on the server, where process.env.API_KEY is securely available.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-// --- Schema Definitions ---
-const agendaSchema = { type: Type.ARRAY, items: { type: Type.STRING } };
-const promptsSchema = { type: Type.ARRAY, items: { type: Type.STRING } };
-const summarySchema = {
-  type: Type.OBJECT,
-  properties: {
-    keyPoints: { type: Type.ARRAY, items: { type: Type.STRING } },
-    decisions: { type: Type.ARRAY, items: { type: Type.STRING } },
-    sentiment: { type: Type.STRING },
-    impactScore: { type: Type.NUMBER },
-    reasoning: { type: Type.STRING }
-  },
-  required: ["keyPoints", "decisions", "sentiment", "impactScore", "reasoning"]
+// --- Robust JSON Parsing ---
+/**
+ * A more robust JSON parser that handles potential markdown code fences.
+ * @param jsonString The string response from the AI model.
+ * @returns The parsed JSON object.
+ */
+const parseJsonResponse = (jsonString: string) => {
+    // Try to find JSON within markdown fences (e.g., ```json\n{...}\n```)
+    const match = jsonString.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    const extractedJson = match ? match[1] : jsonString;
+    
+    try {
+        return JSON.parse(extractedJson.trim());
+    } catch (error) {
+        console.error("Failed to parse JSON response:", extractedJson);
+        throw new Error("The AI returned a response in an invalid format.");
+    }
 };
-const growthSuggestionsSchema = {
-    type: Type.OBJECT,
-    properties: {
-        articles: {
-            type: Type.ARRAY,
-            items: {
-                type: Type.OBJECT,
-                properties: { title: { type: Type.STRING }, url: { type: Type.STRING }, description: { type: Type.STRING } },
-                required: ["title", "url", "description"]
-            }
-        },
-        projects: { type: Type.ARRAY, items: { type: Type.STRING } },
-        skills: { type: Type.ARRAY, items: { type: Type.STRING } }
-    },
-    required: ["articles", "projects", "skills"]
-};
-const managerInsightsSchema = { type: Type.ARRAY, items: { type: Type.STRING } };
 
 
 // --- API Logic Handlers ---
@@ -43,7 +30,7 @@ const handleGenerateAgenda = async (payload: { details: MeetingDetails }) => {
   const { details } = payload;
   const formatList = (list: string[], other?: string) => [...list, other].filter(Boolean).join(', ') || 'Not specified';
   const prompt = `
-    You are an expert manager's assistant. Generate a 5-point agenda for a meeting with the following details:
+    You are an expert manager's assistant. Generate a 5-point agenda for a one-on-one meeting with the following details:
     - Employee Name: ${details.employeeName}, Role: ${details.role}
     - Meeting Focus: ${details.meetingFocus || 'General Catch-up'}
     - Goal: ${details.goal}
@@ -53,15 +40,17 @@ const handleGenerateAgenda = async (payload: { details: MeetingDetails }) => {
     - Challenges: ${formatList(details.employeeChallenges, details.employeeChallengesOther)}
     - Project Status: ${details.projectStatus || 'Not specified'}, Criticality: ${details.projectCriticality}
 
-    Instructions: The first item MUST be "Review previous action items". Tailor other points to the "Meeting Focus".
-    Return ONLY a JSON array of 5 strings.
+    Instructions:
+    1. The first agenda item MUST be "Review previous action items".
+    2. Tailor the other points to the "Meeting Focus".
+    3. Your response MUST be a single, valid JSON array of 5 strings.
+    4. Do NOT include any surrounding text or markdown formatting.
   `;
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash',
     contents: prompt,
-    config: { responseMimeType: "application/json", responseSchema: agendaSchema }
   });
-  return JSON.parse(response.text);
+  return parseJsonResponse(response.text);
 };
 
 const handleGetCoachingPrompts = async (payload: { details: MeetingDetails }) => {
@@ -70,27 +59,32 @@ const handleGetCoachingPrompts = async (payload: { details: MeetingDetails }) =>
     const prompt = `
         You are an expert executive coach. Generate two simple, direct, and highly impactful coaching questions for a manager's 1-on-1 meeting.
         Context: Employee ${details.employeeName} (${details.role}), Career Aspiration: "${details.careerAspirations}", Goal: "${details.goal}", Strengths: ${formatList(details.employeeStrengths, details.employeeStrengthsOther)}, Challenges: ${formatList(details.employeeChallenges, details.employeeChallengesOther)}, Sentiment: ${details.sentiment}.
-        Instructions: Questions must be simple, open-ended, contextual, and non-generic. One should connect their goal to their aspiration.
-        Return ONLY a JSON array of 2 strings.
+        
+        Instructions:
+        1. Questions must be simple, open-ended, contextual, and non-generic.
+        2. One question should connect their current goal to their long-term aspiration.
+        3. Your response MUST be a single, valid JSON array of 2 strings.
+        4. Do NOT include any surrounding text or markdown formatting.
     `;
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash', contents: prompt,
-        config: { responseMimeType: "application/json", responseSchema: promptsSchema }
     });
-    return JSON.parse(response.text);
+    return parseJsonResponse(response.text);
 };
 
 const handleGetManagerFeedbackPrompts = async () => {
     const prompt = `
-        You are a leadership coach. Provide 2 open-ended questions a manager can ask to solicit constructive feedback about their own performance.
-        The questions should create psychological safety.
-        Return ONLY a JSON array of 2 strings.
+        You are a leadership coach. Provide two open-ended questions a manager can ask to solicit constructive feedback about their own performance.
+        The questions should be designed to create psychological safety and encourage honest feedback.
+        
+        Instructions:
+        1. Your response MUST be a single, valid JSON array of 2 strings.
+        2. Do NOT include any surrounding text or markdown formatting.
     `;
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash', contents: prompt,
-        config: { responseMimeType: "application/json", responseSchema: promptsSchema }
     });
-    return JSON.parse(response.text);
+    return parseJsonResponse(response.text);
 };
 
 const handleGenerateSummary = async (payload: { content: any }) => {
@@ -98,29 +92,60 @@ const handleGenerateSummary = async (payload: { content: any }) => {
     const completedAgenda = content.agenda.filter((i: any) => i.completed).map((i: any) => i.text).join(', ');
     const newActionItems = content.actionItems.map((i: any) => `- ${i.text} (Status: ${i.status})`).join('\n');
     const prompt = `
-      You are an expert manager's assistant writing a structured summary of a 1-on-1.
-      Analyze: Meeting with ${content.details.employeeName}, Goal: ${content.details.goal}, Discussed: ${completedAgenda}, Notes: """${content.notes}""", Action Items: ${newActionItems}.
-      Synthesize this into a JSON object. Base the impactScore on goal progress, clear action items, and sentiment.
+      You are an expert manager's assistant tasked with writing a structured summary of a 1-on-1 meeting.
+      Analyze the following meeting data:
+      - Meeting with: ${content.details.employeeName}
+      - Key Goal: ${content.details.goal}
+      - Completed Agenda Items: ${completedAgenda || 'None'}
+      - Meeting Notes: """${content.notes}"""
+      - New Action Items: """${newActionItems || 'None'}"""
+
+      Your task is to synthesize this information into a JSON object with the following structure:
+      {
+        "keyPoints": ["A list of the most important discussion points."],
+        "decisions": ["A list of any decisions that were made."],
+        "sentiment": "A single string describing the overall sentiment of the meeting (e.g., 'Positive and productive', 'Slightly concerned but optimistic').",
+        "impactScore": <A number between 0 and 100 representing the meeting's effectiveness and progress toward the goal>,
+        "reasoning": "A brief explanation for the impact score, considering goal progress, clarity of action items, and overall sentiment."
+      }
+      
+      Instructions:
+      1. Your response MUST be a single, valid JSON object that can be parsed directly.
+      2. Do NOT include any surrounding text or markdown formatting.
     `;
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-pro', contents: prompt,
-        config: { responseMimeType: "application/json", responseSchema: summarySchema }
     });
-    return JSON.parse(response.text);
+    return parseJsonResponse(response.text);
 };
 
 const handleGetGrowthSuggestions = async (payload: { role: string, aspiration: string }) => {
     const { role, aspiration } = payload;
     const prompt = `
-        Act as a career coach. An employee who is a "${role}" wants to become a "${aspiration}".
-        Generate actionable growth suggestions: 1-2 skills, 1-2 practical project ideas, 1-2 relevant articles/books (with public URLs).
-        Return a JSON object.
+        You are an expert career coach. An employee with the role of "${role}" has a career aspiration to become a "${aspiration}".
+        Your task is to provide actionable growth suggestions.
+        Generate a JSON object with the following structure:
+        {
+          "skills": ["A list of 1-2 key skills to develop for this career transition."],
+          "projects": ["A list of 1-2 practical project ideas to gain relevant experience."],
+          "articles": [
+            {
+              "title": "Relevant and specific article title",
+              "url": "https://example.com/article",
+              "description": "A brief, one-sentence description of why the article is relevant."
+            }
+          ]
+        }
+        
+        Instructions:
+        1. Ensure the URLs for articles are valid and publicly accessible.
+        2. Your response MUST be a single, valid JSON object that can be parsed directly.
+        3. Do NOT include any surrounding text or markdown formatting.
     `;
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash', contents: prompt,
-        config: { responseMimeType: "application/json", responseSchema: growthSuggestionsSchema }
     });
-    return JSON.parse(response.text);
+    return parseJsonResponse(response.text);
 };
 
 const handleGenerateManagerInsights = async (payload: { teamData: TeamMember[] }) => {
@@ -133,30 +158,45 @@ const handleGenerateManagerInsights = async (payload: { teamData: TeamMember[] }
     const prompt = `
         You are a leadership coach analyzing a manager's 1-on-1 data:
         ${JSON.stringify(simplifiedData, null, 2)}
-        Identify 2-3 potential "blind spots" or coaching opportunities FOR THE MANAGER based on cross-team patterns.
-        Phrase these as constructive, actionable tips.
-        Return ONLY a JSON array of 2-3 strings.
+        
+        Your task is to identify 2-3 potential "blind spots" or coaching opportunities FOR THE MANAGER based on cross-team patterns.
+        Phrase these as constructive, actionable tips. For example, if many team members report "Prioritization" as a challenge, suggest a workshop on time management techniques for the team.
+        
+        Instructions:
+        1. Your response MUST be a single, valid JSON array of 2-3 strings.
+        2. Do NOT include any surrounding text or markdown formatting.
     `;
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash', contents: prompt,
-        config: { responseMimeType: "application/json", responseSchema: managerInsightsSchema }
     });
-    return JSON.parse(response.text);
+    return parseJsonResponse(response.text);
 };
 
 const handleSimulateConversationResponse = async (payload: { teamMember: TeamMember, topic: string, history: { user: string; model: string }[] }) => {
     const { teamMember, topic, history } = payload;
     const prompt = `
-        Simulate a conversation. You are ${teamMember.name} (${teamMember.role}).
-        Profile: Career Aspiration: ${teamMember.careerAspirations}, Challenges: ${teamMember.previousMeeting?.challenges?.join(', ')}, Strengths: ${teamMember.previousMeeting?.strengths?.join(', ')}, Sentiment: ${teamMember.meetingHistory.slice(-1)[0]?.sentiment || 'Neutral'}.
-        Topic: "${topic}".
-        History: ${history.map(h => `Manager: ${h.user}\nYou: ${h.model}`).join('\n')}
-        Task: Provide a realistic, in-character response (2-4 sentences) to the manager's last message: "${history.slice(-1)[0].user}".
+        You are an AI simulating a conversation. You must stay in character as ${teamMember.name}, who is a ${teamMember.role}.
+        Your Profile:
+        - Career Aspiration: ${teamMember.careerAspirations}
+        - Recent Challenges: ${teamMember.previousMeeting?.challenges?.join(', ') || 'None specified'}
+        - Recent Strengths: ${teamMember.previousMeeting?.strengths?.join(', ')  || 'None specified'}
+        - Recent Meeting Sentiment: ${teamMember.meetingHistory.slice(-1)[0]?.sentiment || 'Neutral'}
+        
+        The topic of this difficult conversation, initiated by the manager, is: "${topic}".
+        
+        Conversation History:
+        ${history.map(h => `Manager: ${h.user}\nYou: ${h.model}`).join('\n')}
+        
+        Your Task: Provide a realistic, in-character response (2-4 sentences) to the manager's last message. Your response should reflect your personality traits inferred from your profile.
+        Manager's last message: "${history.slice(-1)[0].user}"
+        
+        Your response as ${teamMember.name}:
     `;
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-pro',
         contents: prompt,
     });
+    // This is a text response, no JSON parsing needed.
     return response.text;
 };
 
