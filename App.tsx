@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
-import { MeetingDetails, AgendaItem, ActionItem, MeetingSummaryData, MeetingRecord, TeamMember, Conversation, AppUser } from './types';
+import { MeetingDetails, AgendaItem, ActionItem, MeetingSummaryData, MeetingRecord, TeamMember, Conversation, AppUser, AppError } from './types';
 import Header from './components/Header';
 import MeetingSetup from './components/MeetingSetup';
 import MeetingWorkspace from './components/MeetingWorkspace';
@@ -62,7 +62,7 @@ const App: React.FC = () => {
 
   const [summaryData, setSummaryData] = useState<MeetingSummaryData | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<AppError | null>(null);
   
   // Add this check at the very top. If Firebase isn't configured, show a helpful guide.
   if (!isFirebaseConfigured) {
@@ -87,11 +87,20 @@ const App: React.FC = () => {
             console.error("Failed to fetch user data:", error);
 
             if (errorMessage.includes('The query requires an index')) {
-                  setError("Admin Action Required: The organization dashboard needs a database index to function. Please open your browser's developer console (F12), find the error message from Firebase that contains a link, and click that link to create the index. This is a one-time setup. The index may take a few minutes to build. After it's ready, click 'Retry'.");
+                  setError({
+                      type: 'ADMIN_INDEX_REQUIRED',
+                      message: "Admin Action Required: The organization dashboard needs a database index to function. Please open your browser's developer console (F12), find the error message from Firebase that contains a link, and click that link to create the index. This is a one-time setup. The index may take a few minutes to build. After it's ready, click 'Retry'."
+                  });
             } else if (errorMessage.includes('Missing or insufficient permissions')) {
-                setError("Could not load admin dashboard data. This is likely a permissions issue. Please update your Firestore Security Rules to allow 'admin@elevatemanager.com' to read the 'teamMembers' collection group and its 'meetingHistory' subcollections. After updating the rules, please click 'Retry'.");
+                setError({
+                    type: 'ADMIN_PERMISSIONS_REQUIRED',
+                    message: "Could not load admin dashboard data. This is likely a permissions issue. Please update your Firestore Security Rules to allow 'admin@elevatemanager.com' to read the 'teamMembers' collection group and its 'meetingHistory' subcollections. After updating the rules, please click 'Retry'."
+                });
             } else {
-                setError("Could not load team data. This may be due to a network issue or a problem with your Firestore setup. Please check the console for more details.");
+                setError({
+                    type: 'FETCH_FAILED',
+                    message: "Could not load team data. This may be due to a network issue or a problem with your Firestore setup. Please check the console for more details."
+                });
             }
         } finally {
             setIsLoading(false);
@@ -130,7 +139,10 @@ const App: React.FC = () => {
                 setIsAdmin(user.email === ADMIN_EMAIL);
 
                 // Set a specific, actionable error message
-                setError("Your account was created, but your profile could not be saved to the database. This is very likely due to restrictive Firestore Security Rules in your Firebase project. Please update your rules to allow authenticated users to create their own profile in the 'users' collection, then refresh this page or log out and log back in.");
+                setError({
+                    type: 'PROFILE_CREATION_FAILED',
+                    message: "Your account was created, but your profile could not be saved to the database. This is very likely due to restrictive Firestore Security Rules in your Firebase project."
+                });
                 
                 setView('main'); // Go to the main page to display the error prominently
             }
@@ -148,11 +160,11 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    // Only fetch data if there isn't a critical error from the auth listener
-    if (!error) {
+    // Only fetch data if there isn't a critical profile creation error from the auth listener
+    if (currentUser && (!error || error.type !== 'PROFILE_CREATION_FAILED')) {
       fetchData();
     }
-  }, [fetchData, error]);
+  }, [currentUser, fetchData, error]);
 
 
   const handleLogout = async () => {
@@ -201,7 +213,7 @@ const App: React.FC = () => {
       
       setView('workspace');
     } catch (err) {
-      setError('Failed to generate agenda. Please check your API key and try again.');
+      setError({ type: 'FETCH_FAILED', message: 'Failed to generate agenda. Please check your API key and try again.'});
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -260,7 +272,7 @@ const App: React.FC = () => {
       setSummaryData({ summary: summaryResult, actionItems: finalActionItems });
       setView('summary');
     } catch (err) {
-      setError('Failed to generate summary. Please try again.');
+      setError({type: 'FETCH_FAILED', message: 'Failed to generate summary. Please try again.'});
       console.error(err);
     } finally {
       setIsLoading(false);
@@ -382,7 +394,7 @@ const App: React.FC = () => {
         return <MeetingSetup 
                     onStart={handleStartMeeting} 
                     isLoading={isLoading} 
-                    error={error} 
+                    error={error ? error.message : null} 
                     teamMember={selectedTeamMember}
                 />;
       case 'workspace':
