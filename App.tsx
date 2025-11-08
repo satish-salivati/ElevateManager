@@ -70,7 +70,7 @@ const App: React.FC = () => {
   }
 
   const fetchData = useCallback(async () => {
-    if (currentUser) {
+    if (currentUser && currentUser.organizationId) { // Ensure orgId exists before fetching
         setIsLoading(true);
         setError(null);
         try {
@@ -118,11 +118,21 @@ const App: React.FC = () => {
             if (userProfile) {
                 setCurrentUser(userProfile);
                 setIsAdmin(userProfile.email === ADMIN_EMAIL);
+                setError(null); // Clear any previous errors on successful load
                 setView('main');
             } else {
-                // If profile is still missing, something went wrong (e.g., Firestore rules prevented creation)
-                console.error("Could not fetch user profile after multiple attempts. This is likely a Firestore permissions issue. The sign-up may have created an auth user, but failed to create the user's profile document. Please check your Firestore Security Rules. Logging out to prevent inconsistent state.");
-                await doSignOut();
+                // **THE FIX**: Instead of logging out, stay logged in but show an error.
+                // This stops the logout loop and makes the actual problem visible to the user.
+                console.error("CRITICAL: User is authenticated but profile document is missing. This is likely a Firestore permissions issue from sign-up.");
+                
+                // Set a partial user object to keep the user "logged in" visually
+                setCurrentUser({ uid: user.uid, email: user.email, organizationId: '' }); 
+                setIsAdmin(user.email === ADMIN_EMAIL);
+
+                // Set a specific, actionable error message
+                setError("Your account was created, but your profile could not be saved to the database. This is very likely due to restrictive Firestore Security Rules in your Firebase project. Please update your rules to allow authenticated users to create their own profile in the 'users' collection, then refresh this page or log out and log back in.");
+                
+                setView('main'); // Go to the main page to display the error prominently
             }
         } else {
             setCurrentUser(null);
@@ -138,8 +148,11 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    // Only fetch data if there isn't a critical error from the auth listener
+    if (!error) {
+      fetchData();
+    }
+  }, [fetchData, error]);
 
 
   const handleLogout = async () => {
