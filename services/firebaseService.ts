@@ -1,28 +1,7 @@
+import firebase from "firebase/compat/app";
 import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  signOut,
-  onAuthStateChanged as onFirebaseAuthStateChanged,
   User
 } from "firebase/auth";
-import {
-  collection,
-  addDoc,
-  getDocs,
-  query,
-  where,
-  doc,
-  updateDoc,
-  deleteDoc,
-  writeBatch,
-  Timestamp,
-  collectionGroup,
-  orderBy,
-  limit,
-  setDoc,
-  getDoc,
-  runTransaction
-} from "firebase/firestore";
 import { getFirebaseAuth, getDB, isFirebaseConfigured } from "../config/firebase";
 import { TeamMember, MeetingRecord, AppUser } from "../types";
 
@@ -38,7 +17,8 @@ export const onAuthStateChanged = (callback: (user: User | null) => void) => {
   }
   try {
       const auth = getFirebaseAuth();
-      return onFirebaseAuthStateChanged(auth, callback);
+      // Fix: Use v8-compat onAuthStateChanged
+      return auth.onAuthStateChanged(callback);
   } catch (error) {
       console.error("Firebase Auth Error in onAuthStateChanged:", error);
       callback(null);
@@ -52,25 +32,31 @@ export const signUp = async (email: string, password: string, organizationName: 
   const db = getDB();
 
   // Step 1: Create the user in Firebase Auth
-  const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+  // Fix: Use v8-compat createUserWithEmailAndPassword
+  const userCredential = await auth.createUserWithEmailAndPassword(email, password);
   const user = userCredential.user;
 
+  if (!user) {
+    throw new Error("User creation failed.");
+  }
+
   // Step 2: Handle organization and create user profile
-  const organizationsRef = collection(db, "organizations");
-  const usersRef = collection(db, "users");
+  const organizationsRef = db.collection("organizations");
+  const usersRef = db.collection("users");
 
   // Use a transaction to safely find or create the organization
-  const organizationId = await runTransaction(db, async (transaction) => {
-    const orgQuery = query(organizationsRef, where("name", "==", organizationName));
-    const querySnapshot = await getDocs(orgQuery);
+  const organizationId = await db.runTransaction(async (transaction) => {
+    // Fix: Use v8-compat query syntax
+    const orgQuery = organizationsRef.where("name", "==", organizationName);
+    const querySnapshot = await transaction.get(orgQuery);
     
     if (!querySnapshot.empty) {
       // Organization exists, return its ID
       return querySnapshot.docs[0].id;
     } else {
       // Organization doesn't exist, create it
-      const newOrgRef = doc(organizationsRef);
-      transaction.set(newOrgRef, { name: organizationName, createdAt: Timestamp.now() });
+      const newOrgRef = organizationsRef.doc();
+      transaction.set(newOrgRef, { name: organizationName, createdAt: firebase.firestore.Timestamp.now() });
       return newOrgRef.id;
     }
   });
@@ -80,30 +66,38 @@ export const signUp = async (email: string, password: string, organizationName: 
     email: user.email,
     organizationId,
   };
-  await setDoc(doc(usersRef, user.uid), userProfile);
+  // Fix: Use v8-compat set
+  await usersRef.doc(user.uid).set(userProfile);
 
   return user;
 };
 
 
-export const signIn = (email: string, password: string): Promise<User> => {
+export const signIn = async (email: string, password: string): Promise<User> => {
   if (!isFirebaseConfigured) return Promise.reject(NOT_CONFIGURED_ERROR);
   const auth = getFirebaseAuth();
-  return signInWithEmailAndPassword(auth, email, password).then(userCredential => userCredential.user);
+  // Fix: Use v8-compat signInWithEmailAndPassword
+  const userCredential = await auth.signInWithEmailAndPassword(email, password);
+  if (!userCredential.user) {
+    throw new Error("Sign in failed, user not found.");
+  }
+  return userCredential.user;
 };
 
 export const doSignOut = (): Promise<void> => {
   if (!isFirebaseConfigured) return Promise.resolve();
   const auth = getFirebaseAuth();
-  return signOut(auth);
+  // Fix: Use v8-compat signOut
+  return auth.signOut();
 };
 
 export const getUserProfile = async (uid: string): Promise<AppUser | null> => {
     if (!isFirebaseConfigured) return null;
     const db = getDB();
-    const userDocRef = doc(db, 'users', uid);
-    const docSnap = await getDoc(userDocRef);
-    if (docSnap.exists()) {
+    // Fix: Use v8-compat doc().get()
+    const userDocRef = db.collection('users').doc(uid);
+    const docSnap = await userDocRef.get();
+    if (docSnap.exists) {
         return { uid, ...docSnap.data() } as AppUser;
     }
     return null;
@@ -114,7 +108,8 @@ export const getUserProfile = async (uid: string): Promise<AppUser | null> => {
 
 const getTeamMembersCollection = (userId: string) => {
     const db = getDB();
-    return collection(db, 'users', userId, 'teamMembers');
+    // Fix: Use v8-compat collection path
+    return db.collection('users').doc(userId).collection('teamMembers');
 }
 
 
@@ -124,13 +119,15 @@ export const getTeamMembers = async (userId: string, organizationId: string): Pr
   
   // Scoped to user and organization for security
   const teamMembersCol = getTeamMembersCollection(userId);
-  const q = query(teamMembersCol, where("organizationId", "==", organizationId));
-  const snapshot = await getDocs(q);
+  // Fix: Use v8-compat query syntax
+  const q = teamMembersCol.where("organizationId", "==", organizationId);
+  const snapshot = await q.get();
   
   const members: TeamMember[] = await Promise.all(snapshot.docs.map(async (memberDoc) => {
     const memberData = memberDoc.data();
-    const historyCol = collection(db, 'users', userId, 'teamMembers', memberDoc.id, 'meetingHistory');
-    const historySnapshot = await getDocs(query(historyCol, orderBy('date', 'desc')));
+    // Fix: Use v8-compat collection path and query
+    const historyCol = db.collection('users').doc(userId).collection('teamMembers').doc(memberDoc.id).collection('meetingHistory');
+    const historySnapshot = await historyCol.orderBy('date', 'desc').get();
     const meetingHistory = historySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MeetingRecord));
 
     return {
@@ -156,24 +153,27 @@ export const addTeamMember = async (userId: string, organizationId: string, memb
         organizationId,
         previousMeeting: null,
     };
-    const docRef = await addDoc(getTeamMembersCollection(userId), newMemberData);
+    // Fix: Use v8-compat add
+    const docRef = await getTeamMembersCollection(userId).add(newMemberData);
     return { ...newMemberData, id: docRef.id, meetingHistory: [] };
 };
 
 export const updateTeamMember = async (userId: string, member: TeamMember): Promise<void> => {
     if (!isFirebaseConfigured) return Promise.reject(NOT_CONFIGURED_ERROR);
     const db = getDB();
-    const memberDocRef = doc(db, 'users', userId, 'teamMembers', member.id);
+    // Fix: Use v8-compat doc().update()
+    const memberDocRef = db.collection('users').doc(userId).collection('teamMembers').doc(member.id);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { id, meetingHistory, ...dataToUpdate } = member; 
-    await updateDoc(memberDocRef, dataToUpdate);
+    await memberDocRef.update(dataToUpdate);
 };
 
 export const deleteTeamMember = async (userId: string, memberId: string): Promise<void> => {
     if (!isFirebaseConfigured) return Promise.reject(NOT_CONFIGURED_ERROR);
     const db = getDB();
-    const memberDocRef = doc(db, 'users', userId, 'teamMembers', memberId);
-    await deleteDoc(memberDocRef);
+    // Fix: Use v8-compat doc().delete()
+    const memberDocRef = db.collection('users').doc(userId).collection('teamMembers').doc(memberId);
+    await memberDocRef.delete();
 };
 
 
@@ -188,15 +188,16 @@ export const finalizeMeeting = async (
 ) => {
     if (!isFirebaseConfigured) return Promise.reject(NOT_CONFIGURED_ERROR);
     const db = getDB();
-    const batch = writeBatch(db);
+    // Fix: Use v8-compat batch
+    const batch = db.batch();
 
     // 1. Add new record to meetingHistory subcollection
-    const historyCol = collection(db, 'users', userId, 'teamMembers', memberId, 'meetingHistory');
-    const newHistoryDocRef = doc(historyCol);
+    const historyCol = db.collection('users').doc(userId).collection('teamMembers').doc(memberId).collection('meetingHistory');
+    const newHistoryDocRef = historyCol.doc();
     batch.set(newHistoryDocRef, newRecord);
 
     // 2. Update the parent teamMember document
-    const memberDocRef = doc(db, 'users', userId, 'teamMembers', memberId);
+    const memberDocRef = db.collection('users').doc(userId).collection('teamMembers').doc(memberId);
     batch.update(memberDocRef, {
         previousMeeting: newPreviousMeeting,
         careerAspirations: newCareerAspirations,
@@ -213,17 +214,15 @@ export const getAllTeamDataForAdmin = async (organizationId: string): Promise<Te
     const db = getDB();
     
     // Query the collection group but filter strictly by the admin's organizationId
-    const membersQuery = query(
-        collectionGroup(db, 'teamMembers'),
-        where("organizationId", "==", organizationId)
-    );
-    const snapshot = await getDocs(membersQuery);
+    // Fix: Use v8-compat collectionGroup and query
+    const membersQuery = db.collectionGroup('teamMembers').where("organizationId", "==", organizationId);
+    const snapshot = await membersQuery.get();
 
     const members: TeamMember[] = await Promise.all(snapshot.docs.map(async (memberDoc) => {
         const memberData = memberDoc.data();
         // The path to the history subcollection is part of the member's document reference path.
-        const historyCol = collection(memberDoc.ref, 'meetingHistory');
-        const historySnapshot = await getDocs(query(historyCol, orderBy('date', 'desc')));
+        const historyCol = memberDoc.ref.collection('meetingHistory');
+        const historySnapshot = await historyCol.orderBy('date', 'desc').get();
         const meetingHistory = historySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MeetingRecord));
 
         return {
