@@ -32,12 +32,13 @@ const AuthPage: React.FC = () => {
             // onAuthStateChanged in App.tsx will handle navigation
         } catch (err: any) {
             console.error("Authentication Error:", err.code, err.message);
+            const message = err.message || '';
             if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
                 setError('Invalid email or password. Please try again.');
             } else if (err.code === 'auth/email-already-in-use') {
-                setError('An account with this email already exists. Please log in.');
-            } else if (err.code === 'permission-denied' || (err.message && err.message.toLowerCase().includes('permission denied'))) {
-                setError("Database permission error. This usually means your Firestore security rules aren't set up correctly. Please go to your Firebase Console, find 'Firestore Database' > 'Rules', and update them to allow writes for authenticated users. After saving the new rules, try signing up again.");
+                setError('This email is already in use. If you just tried to sign up and it failed, your account may have been partially created. Please try logging in.');
+            } else if (err.code === 'permission-denied' || message.toLowerCase().includes('permission denied') || message.toLowerCase().includes('missing or insufficient permissions')) {
+                setError("Database permission error during sign-up. Please check your Firestore security rules to ensure new users can be created in the 'users' collection. A common rule is `allow create: if request.auth.uid == userId;` for the `/users/{userId}` path.");
             } else {
                 setError('An unknown error occurred. Please check the console and try again.');
             }
