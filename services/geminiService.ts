@@ -2,9 +2,68 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { MeetingDetails, AgendaItem, ActionItem, StructuredSummary, TeamMember, Conversation, GrowthSuggestions } from "../types";
 
-// FIX: Per coding guidelines, the GoogleGenAI client must be initialized directly
-// with `process.env.API_KEY`. The availability of this key is assumed.
+// THIS IS THE FIX: We are ensuring the code uses the secure environment variable.
+// Your new, secret API key will be safely provided by Vercel here.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+/**
+ * A robust utility to parse JSON from a Gemini model's text response.
+ * It handles markdown code fences (```json ... ```) and other text that the model
+ * might return alongside the JSON object or array.
+ * @param text The raw text response from the Gemini API.
+ * @returns The parsed JavaScript object or array.
+ * @throws An error if no valid JSON can be extracted.
+ */
+const parseJsonFromGeminiResponse = (text: string): any => {
+    // Attempt to find JSON within markdown code fences
+    const codeBlockMatch = text.match(/```(json)?\s*([\s\S]*?)\s*```/);
+    if (codeBlockMatch && codeBlockMatch[2]) {
+        try {
+            return JSON.parse(codeBlockMatch[2]);
+        } catch (e) {
+            console.error("Failed to parse JSON from code block, falling back to substring search.", e);
+        }
+    }
+
+    // Fallback to finding the first '{' or '[' and the last '}' or ']'
+    const firstBrace = text.indexOf('{');
+    const lastBrace = text.lastIndexOf('}');
+    const firstBracket = text.indexOf('[');
+    const lastBracket = text.lastIndexOf(']');
+
+    let startIndex = -1;
+    let endIndex = -1;
+
+    // Determine if it's likely an object or an array
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+         // It's likely an object. Prioritize this if it appears first.
+         if (firstBracket === -1 || firstBrace < firstBracket) {
+              startIndex = firstBrace;
+              endIndex = lastBrace;
+         }
+    }
+    
+    if (firstBracket !== -1 && lastBracket > firstBracket) {
+        // It's likely an array. Use this if it's the only option or appears first.
+        if (startIndex === -1 || firstBracket < firstBrace) {
+            startIndex = firstBracket;
+            endIndex = lastBracket;
+        }
+    }
+
+    if (startIndex !== -1 && endIndex !== -1) {
+        const jsonString = text.substring(startIndex, endIndex + 1);
+        try {
+            return JSON.parse(jsonString);
+        } catch (e) {
+            console.error("Failed to parse extracted JSON substring:", jsonString, e);
+            throw new Error("Could not parse valid JSON from the response.");
+        }
+    }
+
+    throw new Error("No valid JSON object or array found in the response.");
+};
+
 
 const agendaSchema = {
   type: Type.ARRAY,
@@ -128,13 +187,11 @@ export const generateAgenda = async (details: MeetingDetails): Promise<string[]>
       }
     });
 
-    const jsonText = response.text;
-    const agendaArray = JSON.parse(jsonText);
-
+    const agendaArray = parseJsonFromGeminiResponse(response.text);
     if (Array.isArray(agendaArray)) {
       return agendaArray;
     } else {
-      throw new Error("Invalid response format from Gemini API for agenda.");
+      throw new Error("Parsed response is not an array for agenda.");
     }
 
   } catch (error) {
@@ -200,13 +257,11 @@ export const getCoachingPrompts = async (details: MeetingDetails): Promise<strin
             }
         });
         
-        const jsonText = response.text;
-        const promptsArray = JSON.parse(jsonText);
-
+        const promptsArray = parseJsonFromGeminiResponse(response.text);
         if (Array.isArray(promptsArray)) {
             return promptsArray;
         } else {
-            throw new Error("Invalid response format from Gemini API for coaching prompts.");
+            throw new Error("Parsed response is not an array for coaching prompts.");
         }
     } catch (error) {
         console.error("Error getting coaching prompts:", error);
@@ -236,13 +291,11 @@ export const getManagerFeedbackPrompts = async (): Promise<string[]> => {
             }
         });
         
-        const jsonText = response.text;
-        const promptsArray = JSON.parse(jsonText);
-
+        const promptsArray = parseJsonFromGeminiResponse(response.text);
         if (Array.isArray(promptsArray)) {
             return promptsArray;
         } else {
-            throw new Error("Invalid response format from Gemini API for manager feedback prompts.");
+            throw new Error("Parsed response is not an array for manager feedback prompts.");
         }
     } catch (error) {
         console.error("Error getting manager feedback prompts:", error);
@@ -287,8 +340,7 @@ export const generateSummary = async (content: SummaryContent): Promise<Structur
                 responseSchema: summarySchema,
             }
         });
-        const jsonText = response.text;
-        const summaryObject = JSON.parse(jsonText);
+        const summaryObject = parseJsonFromGeminiResponse(response.text);
 
         // A simple check to ensure the object is not empty and has a key property
         if (summaryObject && summaryObject.keyPoints) {
@@ -324,7 +376,6 @@ export const getGrowthSuggestions = async (role: string, aspiration: string): Pr
 
     try {
         const response = await ai.models.generateContent({
-            // Reverting to Flash model as it can be more reliable for simpler, structured tasks.
             model: 'gemini-2.5-flash',
             contents: prompt,
             config: {
@@ -332,8 +383,7 @@ export const getGrowthSuggestions = async (role: string, aspiration: string): Pr
                 responseSchema: growthSuggestionsSchema,
             }
         });
-        const jsonText = response.text;
-        const suggestions = JSON.parse(jsonText);
+        const suggestions = parseJsonFromGeminiResponse(response.text);
         
         // A simple check to ensure the object is not empty and has a key property
         if (suggestions && suggestions.skills) {
@@ -345,7 +395,7 @@ export const getGrowthSuggestions = async (role: string, aspiration: string): Pr
         console.error("Error generating growth suggestions:", error);
         return {
             skills: ["Could not generate suggestions due to an API error."],
-            articles: [],
+            articles: [{title: "No articles were suggested.", url: "#", description:""}],
             projects: []
         };
     }
@@ -385,8 +435,8 @@ export const generateManagerInsights = async (teamData: TeamMember[]): Promise<s
                 responseSchema: managerInsightsSchema,
             }
         });
-        const jsonText = response.text;
-        return JSON.parse(jsonText);
+        const insightsArray = parseJsonFromGeminiResponse(response.text);
+        return insightsArray;
     } catch (error) {
         console.error("Error generating manager insights:", error);
         return ["Could not generate insights at this time. Please check back later."];
