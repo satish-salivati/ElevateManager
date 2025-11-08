@@ -26,6 +26,23 @@ import {
 
 const ADMIN_EMAIL = 'admin@elevatemanager.com'; // Hardcoded admin user for demo purposes
 
+const pollForUserProfile = async (uid: string, retries = 5, delay = 1000): Promise<AppUser | null> => {
+    for (let i = 0; i < retries; i++) {
+        const userProfile = await getUserProfile(uid);
+        if (userProfile) {
+            console.log(`User profile found after ${i + 1} attempt(s).`);
+            return userProfile;
+        }
+        // Don't log on the last attempt
+        if (i < retries - 1) {
+            console.log(`Profile not found, attempt ${i + 1}. Retrying in ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+    console.log(`User profile not found after ${retries} attempts.`);
+    return null;
+}
+
 const App: React.FC = () => {
   const [view, setView] = useState<'auth' | 'main' | 'review' | 'setup' | 'workspace' | 'summary' | 'simulator'>('auth');
   
@@ -85,15 +102,26 @@ const App: React.FC = () => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(async (user) => {
         if (user) {
-            const userProfile = await getUserProfile(user.uid);
+            // Widen window to 10 seconds to robustly catch new users
+            const creationTime = user.metadata.creationTime ? new Date(user.metadata.creationTime).getTime() : 0;
+            const isNewUser = (new Date().getTime() - creationTime) < 10000;
+
+            let userProfile = await getUserProfile(user.uid);
+
+            // If profile doesn't exist and it's a new user, start polling.
+            // This handles the race condition where onAuthStateChanged fires before the profile is written to Firestore.
+            if (!userProfile && isNewUser) {
+                console.log("New user detected without a profile. Starting polling to resolve sign-up race condition...");
+                userProfile = await pollForUserProfile(user.uid);
+            }
+
             if (userProfile) {
                 setCurrentUser(userProfile);
                 setIsAdmin(userProfile.email === ADMIN_EMAIL);
-                setView('main'); // Navigate to main view immediately
+                setView('main');
             } else {
-                 // This case can happen if the user document hasn't been created yet
-                 // or if there's an error. We log them out to be safe.
-                console.error("Could not fetch user profile. Logging out.");
+                // If profile is still missing, something went wrong (e.g., Firestore rules prevented creation)
+                console.error("Could not fetch user profile after multiple attempts. This is likely a Firestore permissions issue. The sign-up may have created an auth user, but failed to create the user's profile document. Please check your Firestore Security Rules. Logging out to prevent inconsistent state.");
                 await doSignOut();
             }
         } else {
