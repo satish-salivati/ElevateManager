@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TeamMember } from '../types';
+import { TeamMember, AppError } from '../types';
 import Card from './common/Card';
 import Button from './common/Button';
 import SentimentSparkline from './SentimentSparkline';
@@ -10,7 +10,7 @@ import Spinner from './common/Spinner';
 interface TeamListPageProps {
   teamMembers: TeamMember[];
   isLoading: boolean;
-  error: string | null;
+  error: AppError | null;
   onSelectMember: (memberId: string) => void;
   onStartSimulation: (memberId: string) => void;
   onAddMember: (member: Omit<TeamMember, 'id' | 'userId' | 'previousMeeting' | 'meetingHistory' | 'organizationId'>) => Promise<void>;
@@ -81,13 +81,46 @@ const TeamListPage: React.FC<TeamListPageProps> = (props) => {
     }
 
     if (error) {
-         return (
+        if (error.type === 'PROFILE_CREATION_FAILED') {
+            return (
+                <div className="text-center py-12 px-4 border-2 border-dashed border-red-300 rounded-lg bg-red-50">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <h3 className="mt-4 text-xl font-bold text-red-900">Account Setup Incomplete</h3>
+                    <p className="mt-2 text-sm text-red-700 max-w-2xl mx-auto">{error.message}</p>
+                    <div className="mt-6 text-left max-w-xl mx-auto bg-slate-800 text-white p-4 rounded-md text-sm font-mono">
+                        <p className="mb-2 text-slate-300">// Add this rule to your `firestore.rules` file to fix:</p>
+                        <pre className="whitespace-pre-wrap">
+{`
+match /users/{userId} {
+  // Allow new users to create their own profile document
+  allow create: if request.auth.uid == userId;
+  
+  // Allow logged-in users to read/update their own profile
+  allow read, update: if request.auth.uid == userId;
+}
+`}
+                        </pre>
+                    </div>
+                    <p className="mt-4 text-xs text-slate-500">After updating your security rules in the Firebase Console, refresh this page.</p>
+                    <div className="mt-6">
+                        <Button variant="secondary" onClick={() => window.location.reload()}>
+                            Refresh Page
+                        </Button>
+                    </div>
+                </div>
+            );
+        }
+
+        // Fallback for other errors
+        return (
             <div className="text-center py-16 border-2 border-dashed border-red-300 rounded-lg bg-red-50">
                 <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 <h3 className="mt-2 text-lg font-medium text-red-900">Failed to Load Team Data</h3>
-                <p className="mt-1 text-sm text-red-700">{error}</p>
+                <p className="mt-1 text-sm text-red-700">{error.message}</p>
                  <div className="mt-6">
                     <Button onClick={onRetry}>Retry</Button>
                 </div>
