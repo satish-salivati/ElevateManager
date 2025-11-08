@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TeamMember } from '../types';
+import { TeamMember, AppError } from '../types';
 import TeamListPage from './TeamListPage';
 import Dashboard from './Dashboard';
 import DataExplorer from './DataExplorer';
@@ -9,7 +9,7 @@ interface MainPageProps {
   dashboardTeamMembers: TeamMember[];
   isAdmin: boolean;
   isLoading: boolean;
-  error: string | null;
+  error: AppError | null;
   onSelectMember: (memberId: string) => void;
   onStartSimulation: (memberId: string) => void;
   onAddMember: (member: Omit<TeamMember, 'id' | 'userId' | 'previousMeeting' | 'meetingHistory' | 'organizationId'>) => Promise<void>;
