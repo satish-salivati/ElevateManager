@@ -1,0 +1,7 @@
+{
+  "name": "ElevateManager",
+  "description": "A smart tool for managers to streamline one-on-one meetings. It generates personalized agendas, tracks action items, and offers AI-powered coaching prompts to foster effective communication and team growth.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
