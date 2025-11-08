@@ -128,10 +128,10 @@ export const generateAgenda = async (details: MeetingDetails): Promise<string[]>
       }
     });
 
-    const jsonText = response.text.trim();
+    const jsonText = response.text;
     const agendaArray = JSON.parse(jsonText);
 
-    if (Array.isArray(agendaArray) && agendaArray.every(item => typeof item === 'string')) {
+    if (Array.isArray(agendaArray)) {
       return agendaArray;
     } else {
       throw new Error("Invalid response format from Gemini API for agenda.");
@@ -200,10 +200,10 @@ export const getCoachingPrompts = async (details: MeetingDetails): Promise<strin
             }
         });
         
-        const jsonText = response.text.trim();
+        const jsonText = response.text;
         const promptsArray = JSON.parse(jsonText);
 
-        if (Array.isArray(promptsArray) && promptsArray.every(item => typeof item === 'string')) {
+        if (Array.isArray(promptsArray)) {
             return promptsArray;
         } else {
             throw new Error("Invalid response format from Gemini API for coaching prompts.");
@@ -236,10 +236,10 @@ export const getManagerFeedbackPrompts = async (): Promise<string[]> => {
             }
         });
         
-        const jsonText = response.text.trim();
+        const jsonText = response.text;
         const promptsArray = JSON.parse(jsonText);
 
-        if (Array.isArray(promptsArray) && promptsArray.every(item => typeof item === 'string')) {
+        if (Array.isArray(promptsArray)) {
             return promptsArray;
         } else {
             throw new Error("Invalid response format from Gemini API for manager feedback prompts.");
@@ -287,13 +287,14 @@ export const generateSummary = async (content: SummaryContent): Promise<Structur
                 responseSchema: summarySchema,
             }
         });
-        const jsonText = response.text.trim();
+        const jsonText = response.text;
         const summaryObject = JSON.parse(jsonText);
 
-        if (summaryObject && summaryObject.keyPoints && summaryObject.impactScore !== undefined) {
+        // A simple check to ensure the object is not empty and has a key property
+        if (summaryObject && summaryObject.keyPoints) {
             return summaryObject as StructuredSummary;
         } else {
-            throw new Error("Invalid response format from Gemini API for summary.");
+            throw new Error("API returned JSON that does not match the required schema.");
         }
         
     } catch (error) {
@@ -309,8 +310,6 @@ export const generateSummary = async (content: SummaryContent): Promise<Structur
 };
 
 export const getGrowthSuggestions = async (role: string, aspiration: string): Promise<GrowthSuggestions> => {
-    // A more direct prompt for the model, focusing on generating ideas rather than finding real-time links,
-    // which is more reliable without a search tool.
     const prompt = `
         Act as a career coach. An employee who is a "${role}" wants to become a "${aspiration}".
         Based on this career path, generate a list of actionable growth suggestions.
@@ -325,24 +324,23 @@ export const getGrowthSuggestions = async (role: string, aspiration: string): Pr
 
     try {
         const response = await ai.models.generateContent({
-            // Upgrading to Pro for better quality suggestions and adherence to the schema.
-            model: 'gemini-2.5-pro',
+            // Reverting to Flash model as it can be more reliable for simpler, structured tasks.
+            model: 'gemini-2.5-flash',
             contents: prompt,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: growthSuggestionsSchema,
             }
         });
-        const jsonText = response.text.trim();
-        // Add a validation step before parsing
-        if (jsonText.startsWith('{') && jsonText.endsWith('}')) {
-             const suggestions = JSON.parse(jsonText);
-             // Basic validation of the parsed object
-             if (suggestions.articles && suggestions.projects && suggestions.skills) {
-                 return suggestions;
-             }
+        const jsonText = response.text;
+        const suggestions = JSON.parse(jsonText);
+        
+        // A simple check to ensure the object is not empty and has a key property
+        if (suggestions && suggestions.skills) {
+             return suggestions;
+        } else {
+            throw new Error("API returned JSON that does not match the required schema.");
         }
-        throw new Error("Received an invalid JSON structure from the API.");
     } catch (error) {
         console.error("Error generating growth suggestions:", error);
         return {
@@ -387,7 +385,7 @@ export const generateManagerInsights = async (teamData: TeamMember[]): Promise<s
                 responseSchema: managerInsightsSchema,
             }
         });
-        const jsonText = response.text.trim();
+        const jsonText = response.text;
         return JSON.parse(jsonText);
     } catch (error) {
         console.error("Error generating manager insights:", error);
