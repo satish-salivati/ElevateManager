@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { MeetingDetails, StructuredSummary, TeamMember, GrowthSuggestions } from "../types";
 
 // This function runs on the server, where process.env.API_KEY is securely available.
@@ -44,12 +44,17 @@ const handleGenerateAgenda = async (payload: { details: MeetingDetails }) => {
     Instructions:
     1. The first agenda item MUST be "Review previous action items".
     2. Tailor the other points to the "Meeting Focus".
-    3. Your response MUST be a single, valid JSON array of 5 strings.
-    4. Do NOT include any surrounding text or markdown formatting.
   `;
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash',
     contents: prompt,
+    config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+            type: Type.ARRAY,
+            items: { type: Type.STRING },
+        },
+    },
   });
   return parseJsonResponse(response.text);
 };
@@ -64,11 +69,17 @@ const handleGetCoachingPrompts = async (payload: { details: MeetingDetails }) =>
         Instructions:
         1. Questions must be simple, open-ended, contextual, and non-generic.
         2. One question should connect their current goal to their long-term aspiration.
-        3. Your response MUST be a single, valid JSON array of 2 strings.
-        4. Do NOT include any surrounding text or markdown formatting.
     `;
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash', contents: prompt,
+        model: 'gemini-2.5-flash', 
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+            },
+        },
     });
     return parseJsonResponse(response.text);
 };
@@ -77,13 +88,17 @@ const handleGetManagerFeedbackPrompts = async () => {
     const prompt = `
         You are a leadership coach. Provide two open-ended questions a manager can ask to solicit constructive feedback about their own performance.
         The questions should be designed to create psychological safety and encourage honest feedback.
-        
-        Instructions:
-        1. Your response MUST be a single, valid JSON array of 2 strings.
-        2. Do NOT include any surrounding text or markdown formatting.
     `;
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash', contents: prompt,
+        model: 'gemini-2.5-flash', 
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+            },
+        },
     });
     return parseJsonResponse(response.text);
 };
@@ -101,21 +116,25 @@ const handleGenerateSummary = async (payload: { content: any }) => {
       - Meeting Notes: """${content.notes}"""
       - New Action Items: """${newActionItems || 'None'}"""
 
-      Your task is to synthesize this information into a JSON object with the following structure:
-      {
-        "keyPoints": ["A list of the most important discussion points."],
-        "decisions": ["A list of any decisions that were made."],
-        "sentiment": "A single string describing the overall sentiment of the meeting (e.g., 'Positive and productive', 'Slightly concerned but optimistic').",
-        "impactScore": <A number between 0 and 100 representing the meeting's effectiveness and progress toward the goal>,
-        "reasoning": "A brief explanation for the impact score, considering goal progress, clarity of action items, and overall sentiment."
-      }
-      
-      Instructions:
-      1. Your response MUST be a single, valid JSON object that can be parsed directly.
-      2. Do NOT include any surrounding text or markdown formatting.
+      Synthesize this information to populate the response schema.
     `;
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro', contents: prompt,
+        model: 'gemini-2.5-pro', 
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    keyPoints: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of the most important discussion points." },
+                    decisions: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of any decisions that were made." },
+                    sentiment: { type: Type.STRING, description: "A single string describing the overall sentiment of the meeting (e.g., 'Positive and productive', 'Slightly concerned but optimistic')." },
+                    impactScore: { type: Type.NUMBER, description: "A number between 0 and 100 representing the meeting's effectiveness and progress toward the goal." },
+                    reasoning: { type: Type.STRING, description: "A brief explanation for the impact score, considering goal progress, clarity of action items, and overall sentiment." }
+                },
+                required: ['keyPoints', 'decisions', 'sentiment', 'impactScore', 'reasoning']
+            },
+        },
     });
     return parseJsonResponse(response.text);
 };
@@ -124,27 +143,34 @@ const handleGetGrowthSuggestions = async (payload: { role: string, aspiration: s
     const { role, aspiration } = payload;
     const prompt = `
         You are an expert career coach. An employee with the role of "${role}" has a career aspiration to become a "${aspiration}".
-        Your task is to provide actionable growth suggestions.
-        Generate a JSON object with the following structure:
-        {
-          "skills": ["A list of 1-2 key skills to develop for this career transition."],
-          "projects": ["A list of 1-2 practical project ideas to gain relevant experience."],
-          "articles": [
-            {
-              "title": "Relevant and specific article title",
-              "url": "https://example.com/article",
-              "description": "A brief, one-sentence description of why the article is relevant."
-            }
-          ]
-        }
-        
-        Instructions:
-        1. Ensure the URLs for articles are valid and publicly accessible.
-        2. Your response MUST be a single, valid JSON object that can be parsed directly.
-        3. Do NOT include any surrounding text or markdown formatting.
+        Your task is to provide actionable growth suggestions. Ensure the URLs for articles are valid and publicly accessible.
     `;
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash', contents: prompt,
+        model: 'gemini-2.5-flash', 
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    skills: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of 1-2 key skills to develop for this career transition." },
+                    projects: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of 1-2 practical project ideas to gain relevant experience." },
+                    articles: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                title: { type: Type.STRING, description: "Relevant and specific article title" },
+                                url: { type: Type.STRING, description: "A valid, publicly accessible URL for the article." },
+                                description: { type: Type.STRING, description: "A brief, one-sentence description of why the article is relevant." }
+                            },
+                            required: ['title', 'url', 'description']
+                        }
+                    }
+                },
+                required: ['skills', 'projects', 'articles']
+            }
+        }
     });
     return parseJsonResponse(response.text);
 };
@@ -162,13 +188,17 @@ const handleGenerateManagerInsights = async (payload: { teamData: TeamMember[] }
         
         Your task is to identify 2-3 potential "blind spots" or coaching opportunities FOR THE MANAGER based on cross-team patterns.
         Phrase these as constructive, actionable tips. For example, if many team members report "Prioritization" as a challenge, suggest a workshop on time management techniques for the team.
-        
-        Instructions:
-        1. Your response MUST be a single, valid JSON array of 2-3 strings.
-        2. Do NOT include any surrounding text or markdown formatting.
     `;
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash', contents: prompt,
+        model: 'gemini-2.5-flash', 
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING },
+            },
+        },
     });
     return parseJsonResponse(response.text);
 };
