@@ -10,6 +10,7 @@ import PreMeetingReview from './components/PreMeetingReview';
 import ConversationSimulator from './components/ConversationSimulator';
 import Spinner from './components/common/Spinner';
 import FirebaseConfigErrorPage from './components/FirebaseConfigErrorPage';
+import LandingPage from './components/LandingPage';
 import { isFirebaseConfigured } from './config/firebase';
 import { generateAgenda, generateFinalReport } from './services/geminiService';
 import { 
@@ -92,7 +93,7 @@ const pollForUserProfile = async (uid: string, retries = 5, delay = 1000): Promi
 }
 
 const App: React.FC = () => {
-  const [view, setView] = useState<'auth' | 'main' | 'review' | 'setup' | 'workspace' | 'summary' | 'simulator'>('auth');
+  const [view, setView] = useState<'landing' | 'auth' | 'main' | 'review' | 'setup' | 'workspace' | 'summary' | 'simulator'>('landing');
   
   const [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
@@ -238,7 +239,7 @@ const App: React.FC = () => {
             setTeamMembers([]);
             setDashboardTeamMembers([]);
             setIsAdmin(false);
-            setView('auth');
+            setView('landing');
             resetState();
         }
         setIsAuthLoading(false);
@@ -272,6 +273,7 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
       await doSignOut();
+      setView('landing');
   }
   
   const handleSelectTeamMember = (memberId: string) => {
@@ -397,9 +399,6 @@ const App: React.FC = () => {
     setFeedbackConversations([]);
     setError(null);
     setSummaryData(null);
-    // Do not reset admin selections on simple navigation
-    // setSelectedOrgId(null);
-    // setSelectedManagerId(null);
   };
 
   const handleFinishMeetingCycle = async () => {
@@ -470,15 +469,14 @@ const App: React.FC = () => {
         </div>
       );
     }
-
-    if (!currentUser) {
-        return <AuthPage />;
-    }
     
     switch (view) {
+      case 'landing':
+        return <LandingPage onNavigateToAuth={() => setView('auth')} />;
       case 'auth':
         return <AuthPage />;
       case 'main':
+        if (!currentUser) return <LandingPage onNavigateToAuth={() => setView('auth')} />;
         return <MainPage 
             teamMembers={teamMembers}
             dashboardTeamMembers={dashboardTeamMembers}
@@ -541,26 +539,37 @@ const App: React.FC = () => {
         }
         return null;
       default:
-        return <AuthPage />;
+        return <LandingPage onNavigateToAuth={() => setView('auth')} />;
     }
   }
 
+  const AppContainer: React.FC<{children: React.ReactNode}> = ({ children }) => {
+    if (view === 'landing') {
+        return <>{children}</>;
+    }
+    return (
+        <div className="min-h-screen bg-slate-100 text-slate-800 font-sans">
+            {currentUser && view !== 'auth' && (
+              <Header 
+                  onHome={() => {
+                      setView('main');
+                      resetState();
+                  }}
+                  onLogout={handleLogout}
+                  isLoggedIn={!!currentUser} 
+              />
+            )}
+            <main className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+                {children}
+            </main>
+        </div>
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-800 font-sans">
-      <Header 
-        onHome={() => {
-            if(currentUser) {
-              setView('main');
-              resetState();
-            }
-        }}
-        onLogout={handleLogout}
-        isLoggedIn={!!currentUser} 
-      />
-      <main className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+    <AppContainer>
         {renderContent()}
-      </main>
-    </div>
+    </AppContainer>
   );
 };
 
