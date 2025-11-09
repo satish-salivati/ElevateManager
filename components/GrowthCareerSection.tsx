@@ -3,14 +3,13 @@ import Card from './common/Card';
 import Button from './common/Button';
 import Spinner from './common/Spinner';
 import { getGrowthSuggestions } from '../services/geminiService';
-import { GrowthSuggestions } from '../types';
+import { GrowthSuggestions, MeetingDetails } from '../types';
 
 interface GrowthCareerSectionProps {
-  aspirations: string;
-  role: string;
+  meetingDetails: MeetingDetails;
 }
 
-const GrowthCareerSection: React.FC<GrowthCareerSectionProps> = ({ aspirations, role }) => {
+const GrowthCareerSection: React.FC<GrowthCareerSectionProps> = ({ meetingDetails }) => {
     const [suggestions, setSuggestions] = useState<GrowthSuggestions | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -19,8 +18,15 @@ const GrowthCareerSection: React.FC<GrowthCareerSectionProps> = ({ aspirations, 
         setIsLoading(true);
         setError(null);
         try {
-            const result = await getGrowthSuggestions(role, aspirations);
-            setSuggestions(result);
+            // Pass the entire meetingDetails object for rich context
+            const result = await getGrowthSuggestions(meetingDetails);
+            // Check if the service returned the specific fallback error message
+            if (result.skills.includes("Could not generate suggestions due to an API error.")) {
+                setError("Could not generate suggestions due to an API error.");
+                setSuggestions(null); // Clear any previous valid suggestions
+            } else {
+                setSuggestions(result);
+            }
         } catch (err) {
             setError("Failed to generate suggestions. Please try again.");
             console.error(err);
@@ -29,14 +35,13 @@ const GrowthCareerSection: React.FC<GrowthCareerSectionProps> = ({ aspirations, 
         }
     };
 
-  if (!aspirations) {
+  if (!meetingDetails.careerAspirations) {
     return null;
   }
   
   const renderSuggestions = () => {
       if (!suggestions) return null;
 
-      // FIX: Changed JSX.Element to React.ReactNode to resolve "Cannot find namespace 'JSX'" error.
       const SuggestionSection: React.FC<{title: string; items: string[]; icon: React.ReactNode}> = ({title, items, icon}) => (
           <div>
               <h4 className="font-semibold text-slate-800 flex items-center gap-2">
@@ -92,23 +97,30 @@ const GrowthCareerSection: React.FC<GrowthCareerSectionProps> = ({ aspirations, 
             <div className="flex-1">
             <h3 className="text-md font-semibold text-slate-800">Growth & Career Goal</h3>
             <p className="mt-1 text-sm text-slate-700">
-                {aspirations}
+                {meetingDetails.careerAspirations}
             </p>
             </div>
         </div>
 
-        {!suggestions && (
+        {!suggestions && !error && (
              <div className="mt-4 flex items-center gap-4">
                 <Button onClick={handleGenerate} size="sm" disabled={isLoading}>
                     {isLoading ? <Spinner small/> : 'Generate Growth Ideas'}
                 </Button>
-                {error && <p className="text-xs text-red-600">{error}</p>}
             </div>
         )}
        
-        {isLoading && suggestions === null && (
+        {isLoading && (
             <div className="mt-4 pt-4 border-t border-indigo-200 text-center">
-                <p className="text-sm text-slate-600">Finding relevant resources...</p>
+                <div className="flex justify-center"><Spinner small /></div>
+                <p className="text-sm text-slate-600 mt-2">Finding relevant resources...</p>
+            </div>
+        )}
+
+        {error && !isLoading && (
+            <div className="mt-4 pt-4 border-t border-indigo-200 text-center">
+                <p className="text-sm text-red-600">{error}</p>
+                <Button onClick={handleGenerate} size="sm" variant="secondary" className="mt-2">Try Again</Button>
             </div>
         )}
         
