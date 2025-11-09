@@ -26,6 +26,38 @@ import {
 
 const ADMIN_EMAIL = 'admin@elevatemanager.com'; // Hardcoded admin user for demo purposes
 
+const FIRESTORE_RULES_GUIDE = `rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Users can create their own profile, and can only read/update their own.
+    match /users/{userId} {
+      allow create: if request.auth.uid == userId;
+      allow read, update: if request.auth.uid == userId;
+
+      // Users can fully manage the subcollections for their own team members.
+      match /teamMembers/{memberId} {
+        allow read, create, update, delete: if request.auth.uid == userId;
+        match /meetingHistory/{historyId} {
+          allow read, create, update, delete: if request.auth.uid == userId;
+        }
+      }
+    }
+    
+    // The admin user can list all team members across the organization
+    // for the main dashboard view.
+    match /{path=**}/teamMembers/{memberId} {
+      allow list: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email == 'admin@elevatemanager.com';
+    }
+
+    // Organizations can be created by any logged-in user.
+    // This is a simplified rule for an MVP.
+    match /organizations/{orgId} {
+      allow get, create: if request.auth != null;
+    }
+  }
+}`;
+
 const pollForUserProfile = async (uid: string, retries = 5, delay = 1000): Promise<AppUser | null> => {
     for (let i = 0; i < retries; i++) {
         const userProfile = await getUserProfile(uid);
@@ -94,7 +126,8 @@ const App: React.FC = () => {
             } else if (errorMessage.includes('Missing or insufficient permissions')) {
                 setError({
                     type: 'ADMIN_PERMISSIONS_REQUIRED',
-                    message: "Could not load admin dashboard data. This is likely a permissions issue. Please update your Firestore Security Rules to allow 'admin@elevatemanager.com' to read the 'teamMembers' collection group and its 'meetingHistory' subcollections. After updating the rules, please click 'Retry'."
+                    message: "Could not load admin dashboard data due to a permissions issue. Your Firestore Security Rules need to be updated to allow the admin account to read data across the organization.",
+                    details: FIRESTORE_RULES_GUIDE
                 });
             } else {
                 setError({
@@ -141,7 +174,8 @@ const App: React.FC = () => {
                 // Set a specific, actionable error message
                 setError({
                     type: 'PROFILE_CREATION_FAILED',
-                    message: "Your account was created, but your profile could not be saved to the database. This is very likely due to restrictive Firestore Security Rules in your Firebase project."
+                    message: "Your account was created, but your profile could not be saved to the database. This is a common setup issue caused by restrictive default Firestore Security Rules.",
+                    details: FIRESTORE_RULES_GUIDE
                 });
                 
                 setView('main'); // Go to the main page to display the error prominently
