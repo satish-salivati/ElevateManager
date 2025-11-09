@@ -119,7 +119,7 @@ const handleGenerateSummary = async (payload: { content: any }) => {
       Your task is to synthesize this information and respond ONLY with a valid JSON object that conforms to the required schema. Do not add any introductory text, closing text, or markdown formatting like \`\`\`json.
     `;
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash', 
+        model: 'gemini-2.5-pro', 
         contents: prompt,
         config: {
             responseMimeType: "application/json",
@@ -147,7 +147,7 @@ const handleGetGrowthSuggestions = async (payload: { role: string, aspiration: s
         Your task is to provide actionable growth suggestions. Your response MUST be ONLY a valid JSON object that conforms to the required schema. Ensure the URLs for articles are valid and publicly accessible. Do not add any introductory text, closing text, or markdown formatting like \`\`\`json.
     `;
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash', 
+        model: 'gemini-2.5-pro', 
         contents: prompt,
         config: {
             responseMimeType: "application/json",
