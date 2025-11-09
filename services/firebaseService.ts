@@ -39,50 +39,54 @@ export const onAuthStateChanged = (callback: (user: Firebase.User | null) => voi
 // FIX: The 'User' type is not available as a direct import. Use 'firebase.User' to reference the type from the global namespace.
 // @google/genai-fix: Corrected the Firebase User type from `firebase.auth.User` to `Firebase.User`. The User type is on the root `firebase` namespace.
 export const signUp = async (email: string, password: string, organizationName: string): Promise<Firebase.User> => {
-  if (!isFirebaseConfigured) return Promise.reject(NOT_CONFIGURED_ERROR);
-  const auth = getFirebaseAuth();
-  const db = getDB();
+    if (!isFirebaseConfigured) return Promise.reject(NOT_CONFIGURED_ERROR);
+    const auth = getFirebaseAuth();
+    const db = getDB();
 
-  // Step 1: Create the user in Firebase Auth
-  const userCredential = await auth.createUserWithEmailAndPassword(email, password);
-  const user = userCredential.user;
+    // Step 1: Find or Create the Organization ID
+    const orgsRef = db.collection('organizations');
+    const orgQuery = await orgsRef.where('name', '==', organizationName.trim()).limit(1).get();
+    
+    let orgId: string;
+    if (orgQuery.empty) {
+        const newOrgRef = await orgsRef.add({ name: organizationName.trim() });
+        orgId = newOrgRef.id;
+    } else {
+        orgId = orgQuery.docs[0].id;
+    }
 
-  if (!user) {
-    throw new Error("User creation failed. No user returned from Firebase Auth.");
-  }
+    // Step 2: Create the user in Firebase Auth
+    const userCredential = await auth.createUserWithEmailAndPassword(email, password);
+    const user = userCredential.user;
 
-  // Step 2 & 3: Use a batch write to atomically create the organization and user profile.
-  // This ensures that either both documents are created successfully, or none are.
-  // This is the most robust way to handle multi-document creation on sign-up.
-  try {
-    const batch = db.batch();
+    if (!user) {
+        throw new Error("User creation failed. No user returned from Firebase Auth.");
+    }
 
-    // Define a reference for the new organization
-    const orgRef = db.collection("organizations").doc();
-    batch.set(orgRef, { 
-        name: organizationName, 
-        createdAt: firebase.firestore.Timestamp.now() 
-    });
+    // Step 3: Create the user profile document in Firestore with a rollback mechanism.
+    try {
+        const userRef = db.collection("users").doc(user.uid);
+        await userRef.set({
+            email: user.email,
+            organizationId: orgId,
+        });
 
-    // Define a reference for the new user's profile
-    const userRef = db.collection("users").doc(user.uid);
-    batch.set(userRef, {
-        email: user.email,
-        organizationId: orgRef.id // Use the generated ID of the new organization
-    });
+        // Step 4: Verify the profile was created before finishing.
+        // This is the critical step to prevent the race condition.
+        const profile = await pollForUserProfile(user.uid, 5, 500); // Poll for 2.5 seconds
+        if (!profile) {
+            throw new Error("Profile verification failed. The database write could not be confirmed.");
+        }
 
-    // Commit the batch
-    await batch.commit();
-
-    return user;
-  } catch (dbError) {
-    // If the database write fails, we should delete the newly created auth user
-    // to allow them to try signing up again without getting an "email already in use" error.
-    console.error("Firestore batch write failed during sign up. Deleting auth user.", dbError);
-    await user.delete();
-    // Re-throw the original database error to be displayed to the user.
-    throw dbError;
-  }
+        return user;
+    } catch (dbError) {
+        // If the database write OR verification fails, we must delete the auth user
+        // to allow them to try signing up again without getting an "email already in use" error.
+        console.error("Firestore write/verification failed during sign up. Deleting auth user.", dbError);
+        await user.delete();
+        // Re-throw the original database error to be displayed to the user.
+        throw dbError;
+    }
 };
 
 
@@ -108,10 +112,34 @@ export const getUserProfile = async (uid: string): Promise<AppUser | null> => {
     if (!isFirebaseConfigured) return null;
     const db = getDB();
     const userDocRef = db.collection('users').doc(uid);
-    const docSnap = await userDocRef.get();
-    if (docSnap.exists) {
-        return { uid, ...docSnap.data() } as AppUser;
+    try {
+        const docSnap = await userDocRef.get();
+        if (docSnap.exists) {
+            return { uid, ...docSnap.data() } as AppUser;
+        }
+        return null;
+    } catch (error) {
+        console.error("Error fetching user profile:", error);
+        return null;
     }
+}
+
+/**
+ * A helper function to poll for a user profile document after creation.
+ * This is used to mitigate Firestore replication delays.
+ */
+const pollForUserProfile = async (uid: string, retries = 5, delay = 1000): Promise<AppUser | null> => {
+    for (let i = 0; i < retries; i++) {
+        const userProfile = await getUserProfile(uid);
+        if (userProfile) {
+            console.log(`User profile verified after ${i + 1} attempt(s).`);
+            return userProfile;
+        }
+        if (i < retries - 1) {
+            await new Promise(resolve => setTimeout(resolve, delay));
+        }
+    }
+    console.warn(`User profile could not be verified after ${retries} attempts.`);
     return null;
 }
 
