@@ -105,7 +105,7 @@ const MeetingWorkspace: React.FC<MeetingWorkspaceProps> = (props) => {
         </div>
       </div>
       
-      <GrowthCareerSection aspirations={meetingDetails.careerAspirations} role={meetingDetails.role} />
+      <GrowthCareerSection meetingDetails={meetingDetails} />
 
       {previousMeeting && <HistoricalContext previousMeeting={previousMeeting} />}
 
