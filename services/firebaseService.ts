@@ -48,26 +48,41 @@ export const signUp = async (email: string, password: string, organizationName: 
   const user = userCredential.user;
 
   if (!user) {
-    throw new Error("User creation failed.");
+    throw new Error("User creation failed. No user returned from Firebase Auth.");
   }
 
-  // Step 2: ALWAYS create a new organization for simplicity and to avoid race conditions.
-  // This is a robust approach for an MVP.
-  const organizationsRef = db.collection("organizations");
-  const usersRef = db.collection("users");
+  // Step 2 & 3: Use a batch write to atomically create the organization and user profile.
+  // This ensures that either both documents are created successfully, or none are.
+  // This is the most robust way to handle multi-document creation on sign-up.
+  try {
+    const batch = db.batch();
 
-  const newOrgRef = organizationsRef.doc();
-  await newOrgRef.set({ name: organizationName, createdAt: firebase.firestore.Timestamp.now() });
-  const organizationId = newOrgRef.id;
+    // Define a reference for the new organization
+    const orgRef = db.collection("organizations").doc();
+    batch.set(orgRef, { 
+        name: organizationName, 
+        createdAt: firebase.firestore.Timestamp.now() 
+    });
 
-  // Step 3: Create the user's profile document in Firestore
-  const userProfile: Omit<AppUser, 'uid'> = {
-    email: user.email,
-    organizationId,
-  };
-  await usersRef.doc(user.uid).set(userProfile);
+    // Define a reference for the new user's profile
+    const userRef = db.collection("users").doc(user.uid);
+    batch.set(userRef, {
+        email: user.email,
+        organizationId: orgRef.id // Use the generated ID of the new organization
+    });
 
-  return user;
+    // Commit the batch
+    await batch.commit();
+
+    return user;
+  } catch (dbError) {
+    // If the database write fails, we should delete the newly created auth user
+    // to allow them to try signing up again without getting an "email already in use" error.
+    console.error("Firestore batch write failed during sign up. Deleting auth user.", dbError);
+    await user.delete();
+    // Re-throw the original database error to be displayed to the user.
+    throw dbError;
+  }
 };
 
 
