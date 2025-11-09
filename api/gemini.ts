@@ -103,86 +103,140 @@ const handleGetManagerFeedbackPrompts = async () => {
     return parseJsonResponse(response.text);
 };
 
-const handleGenerateSummary = async (payload: { content: any }) => {
-    const { content } = payload;
-    const completedAgenda = content.agenda.filter((i: any) => i.completed).map((i: any) => i.text).join(', ');
-    const newActionItems = content.actionItems.map((i: any) => `- ${i.text} (Status: ${i.status})`).join('\n');
-    const prompt = `
-      You are an expert manager's assistant tasked with writing a structured summary of a 1-on-1 meeting.
-      Analyze the following meeting data:
-      - Meeting with: ${content.details.employeeName}
-      - Key Goal: ${content.details.goal}
-      - Completed Agenda Items: ${completedAgenda || 'None'}
-      - Meeting Notes: """${content.notes}"""
-      - New Action Items: """${newActionItems || 'None'}"""
-      - Stated Challenges: ${[...content.details.employeeChallenges, content.details.employeeChallengesOther].filter(Boolean).join(', ')}
-
-      Your task is to synthesize this information and respond ONLY with a valid JSON object that conforms to the required schema. Do not add any introductory text, closing text, or markdown formatting like \`\`\`json.
-      
-      - For 'impactScore', calculate it based on goal progress, sentiment, and whether clear action items were defined.
-      - For 'coachingMoment', provide a single, actionable tip FOR THE MANAGER on what to focus on in the NEXT meeting based on the notes and challenges.
-    `;
-    const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro', 
-        contents: prompt,
-        config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    keyPoints: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of the most important discussion points." },
-                    decisions: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of any decisions that were made." },
-                    sentiment: { type: Type.STRING, description: "A single string describing the overall sentiment of the meeting (e.g., 'Positive and productive', 'Slightly concerned but optimistic')." },
-                    impactScore: { type: Type.NUMBER, description: "A number between 0 and 100 representing the meeting's effectiveness and progress toward the goal." },
-                    reasoning: { type: Type.STRING, description: "A brief explanation for the impact score, considering goal progress, clarity of action items, and overall sentiment." },
-                    coachingMoment: { type: Type.STRING, description: "A single, actionable tip for the manager for the next 1-on-1."}
-                },
-                required: ['keyPoints', 'decisions', 'sentiment', 'impactScore', 'reasoning', 'coachingMoment']
-            },
-        },
-    });
-    return parseJsonResponse(response.text);
-};
-
-const handleGetGrowthSuggestions = async (payload: { context: MeetingDetails }) => {
-    const { context } = payload;
+const handleGetGrowthSuggestions = async (payload: { details: MeetingDetails }): Promise<GrowthSuggestions> => {
+    const { details } = payload;
     const formatList = (list: string[], other?: string) => [...list, other].filter(Boolean).join(', ') || 'Not specified';
+
     const prompt = `
-        You are an expert career coach. An employee with the role of "${context.role}" has a career aspiration to become a "${context.careerAspirations}".
-        
-        Here is a detailed, real-time profile of the employee based on their latest 1-on-1 meeting:
-        - Stated Strengths: ${formatList(context.employeeStrengths, context.employeeStrengthsOther)}
-        - Current Challenges: ${formatList(context.employeeChallenges, context.employeeChallengesOther)}
-        - Current Project Focus: ${context.goal}
-        - Project Status: ${context.projectStatus}
-        - Recent Sentiment: ${context.sentiment}
-        
-        Your task is to provide hyper-personalized and actionable growth suggestions based on this specific context. Your response MUST be ONLY a valid JSON object that conforms to the required schema. Ensure the URLs for articles are valid and publicly accessible. Do not add any introductory text, closing text, or markdown formatting like \`\`\`json.
+      You are an expert career coach. Your task is to analyze the context of a 1-on-1 meeting and generate growth suggestions.
+      
+      MEETING CONTEXT:
+      - Employee: ${details.employeeName} (${details.role})
+      - Stated Career Aspiration: "${details.careerAspirations}"
+      - Meeting Goal: ${details.goal}
+      - Employee's Stated Strengths: ${formatList(details.employeeStrengths, details.employeeStrengthsOther)}
+      - Employee's Stated Challenges: ${formatList(details.employeeChallenges, details.employeeChallengesOther)}
+
+      YOUR TASK:
+      Based on ALL of the information above, generate a single, valid JSON object. Do not add any introductory text, closing text, or markdown formatting like \`\`\`json.
+
+      The JSON object must contain these top-level keys:
+
+      -   \`skills\`: Identify 1-2 key skills the employee should develop to reach their career aspiration, directly referencing their stated challenges.
+      -   \`projects\`: Suggest 1-2 practical, small-scale project ideas that would help them develop these skills, leveraging their stated strengths.
+      -   \`articles\`: Find 2 real, publicly accessible articles with valid URLs that are highly relevant to the skills and challenges discussed. Provide a title, URL, and a one-sentence description of why it's relevant.
     `;
+
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro', 
+        model: 'gemini-2.5-pro',
         contents: prompt,
         config: {
             responseMimeType: "application/json",
             responseSchema: {
                 type: Type.OBJECT,
                 properties: {
-                    skills: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of 1-2 key skills to develop for this career transition, directly related to their stated challenges." },
-                    projects: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of 1-2 practical project ideas to gain relevant experience, leveraging their strengths." },
+                    skills: { type: Type.ARRAY, items: { type: Type.STRING } },
+                    projects: { type: Type.ARRAY, items: { type: Type.STRING } },
                     articles: {
                         type: Type.ARRAY,
                         items: {
                             type: Type.OBJECT,
                             properties: {
-                                title: { type: Type.STRING, description: "Relevant and specific article title" },
-                                url: { type: Type.STRING, description: "A valid, publicly accessible URL for the article." },
-                                description: { type: Type.STRING, description: "A brief, one-sentence description of why the article is relevant." }
+                                title: { type: Type.STRING },
+                                url: { type: Type.STRING },
+                                description: { type: Type.STRING }
                             },
                             required: ['title', 'url', 'description']
                         }
                     }
                 },
                 required: ['skills', 'projects', 'articles']
+            }
+        }
+    });
+    return parseJsonResponse(response.text);
+};
+
+const handleGenerateFinalReport = async (payload: { content: any }) => {
+    const { content } = payload;
+    const completedAgenda = content.agenda.filter((i: any) => i.completed).map((i: any) => i.text).join(', ');
+    const newActionItems = content.actionItems.map((i: any) => `- ${i.text} (Status: ${i.status})`).join('\n');
+    const formatList = (list: string[], other?: string) => [...list, other].filter(Boolean).join(', ') || 'Not specified';
+
+    const prompt = `
+      You are an expert manager's assistant and career coach. Your task is to analyze the full context of a 1-on-1 meeting and generate a comprehensive report.
+      
+      MEETING CONTEXT:
+      - Employee: ${content.details.employeeName} (${content.details.role})
+      - Stated Career Aspiration: "${content.details.careerAspirations}"
+      - Meeting Goal: ${content.details.goal}
+      - Employee's Stated Strengths: ${formatList(content.details.employeeStrengths, content.details.employeeStrengthsOther)}
+      - Employee's Stated Challenges: ${formatList(content.details.employeeChallenges, content.details.employeeChallengesOther)}
+      - Completed Agenda Items: ${completedAgenda || 'None'}
+      - Comprehensive Meeting Notes: """${content.notes}"""
+      - New Action Items Created: """${newActionItems || 'None'}"""
+
+      YOUR TASK:
+      Based on ALL of the information above, generate a single, valid JSON object. Do not add any introductory text, closing text, or markdown formatting like \`\`\`json.
+
+      The JSON object must contain two top-level keys: "summary" and "growthSuggestions".
+
+      1.  **For the "summary" object:**
+          -   \`keyPoints\`: Synthesize the most important discussion points from the notes.
+          -   \`decisions\`: List any concrete decisions made.
+          -   \`sentiment\`: Describe the overall sentiment of the meeting.
+          -   \`impactScore\`: Calculate a score (0-100) for the meeting's effectiveness based on goal progress, sentiment, and defined action items.
+          -   \`reasoning\`: Briefly explain the impact score.
+          -   \`coachingMoment\`: Provide a single, forward-looking, actionable tip FOR THE MANAGER on what to focus on in the NEXT meeting, based on the notes and challenges.
+
+      2.  **For the "growthSuggestions" object:**
+          -   \`skills\`: Identify 1-2 key skills the employee should develop to reach their career aspiration, directly referencing their stated challenges or topics from the meeting notes.
+          -   \`projects\`: Suggest 1-2 practical, small-scale project ideas that would help them develop these skills, leveraging their stated strengths.
+          -   \`articles\`: Find 2 real, publicly accessible articles with valid URLs that are highly relevant to the skills and challenges discussed. Provide a title, URL, and a one-sentence description of why it's relevant.
+    `;
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-2.5-pro',
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    summary: {
+                        type: Type.OBJECT,
+                        properties: {
+                            keyPoints: { type: Type.ARRAY, items: { type: Type.STRING } },
+                            decisions: { type: Type.ARRAY, items: { type: Type.STRING } },
+                            sentiment: { type: Type.STRING },
+                            impactScore: { type: Type.NUMBER },
+                            reasoning: { type: Type.STRING },
+                            coachingMoment: { type: Type.STRING }
+                        },
+                        required: ['keyPoints', 'decisions', 'sentiment', 'impactScore', 'reasoning', 'coachingMoment']
+                    },
+                    growthSuggestions: {
+                        type: Type.OBJECT,
+                        properties: {
+                            skills: { type: Type.ARRAY, items: { type: Type.STRING } },
+                            projects: { type: Type.ARRAY, items: { type: Type.STRING } },
+                            articles: {
+                                type: Type.ARRAY,
+                                items: {
+                                    type: Type.OBJECT,
+                                    properties: {
+                                        title: { type: Type.STRING },
+                                        url: { type: Type.STRING },
+                                        description: { type: Type.STRING }
+                                    },
+                                    required: ['title', 'url', 'description']
+                                }
+                            }
+                        },
+                        required: ['skills', 'projects', 'articles']
+                    }
+                },
+                required: ['summary', 'growthSuggestions']
             }
         }
     });
@@ -287,17 +341,18 @@ export default async function handler(req: Request) {
       case 'getManagerFeedbackPrompts':
         result = await handleGetManagerFeedbackPrompts();
         break;
-      case 'generateSummary':
-        result = await handleGenerateSummary(payload);
-        break;
-      case 'getGrowthSuggestions':
-        result = await handleGetGrowthSuggestions(payload);
+      case 'generateFinalReport':
+        result = await handleGenerateFinalReport(payload);
         break;
       case 'generateManagerInsights':
         result = await handleGenerateManagerInsights(payload);
         break;
       case 'simulateConversationResponse':
         result = await handleSimulateConversationResponse(payload);
+        break;
+      // FIX: Added case for the new getGrowthSuggestions action.
+      case 'getGrowthSuggestions':
+        result = await handleGetGrowthSuggestions(payload);
         break;
       default:
         return new Response(JSON.stringify({ message: 'Invalid action' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
