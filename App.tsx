@@ -11,7 +11,7 @@ import ConversationSimulator from './components/ConversationSimulator';
 import Spinner from './components/common/Spinner';
 import FirebaseConfigErrorPage from './components/FirebaseConfigErrorPage';
 import { isFirebaseConfigured } from './config/firebase';
-import { generateAgenda, generateSummary } from './services/geminiService';
+import { generateAgenda, generateFinalReport } from './services/geminiService';
 import { 
     onAuthStateChanged, 
     doSignOut,
@@ -110,7 +110,7 @@ const App: React.FC = () => {
             setTeamMembers(members);
 
             if (isAdmin) {
-                const allMembers = await getAllTeamDataForAdmin(currentUser.organizationId);
+                const allMembers = await getAllTeamDataForAdmin();
                 setDashboardTeamMembers(allMembers);
             }
         } catch (err) {
@@ -299,16 +299,20 @@ const App: React.FC = () => {
 
     try {
       const comprehensiveNotes = constructFullNotes(finalAgenda, coachingData, feedbackData);
-      const summaryResult = await generateSummary({
+      const finalReport = await generateFinalReport({
         details: meetingDetails,
         agenda: finalAgenda,
         notes: comprehensiveNotes,
         actionItems: finalActionItems,
       });
-      setSummaryData({ summary: summaryResult, actionItems: finalActionItems });
+      setSummaryData({ 
+        summary: finalReport.summary, 
+        growthSuggestions: finalReport.growthSuggestions,
+        actionItems: finalActionItems 
+      });
       setView('summary');
     } catch (err) {
-      setError({type: 'FETCH_FAILED', message: 'Failed to generate summary. Please try again.'});
+      setError({type: 'FETCH_FAILED', message: 'Failed to generate summary and suggestions. Please try again.'});
       console.error(err);
     } finally {
       setIsLoading(false);
