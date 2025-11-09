@@ -30,24 +30,38 @@ const FIRESTORE_RULES_GUIDE = `rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Users can create their own profile, and can only read/update their own.
+    // Function to check if the user is the admin
+    function isAdmin() {
+      // Check for the existence of the user document before trying to access its data.
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email == 'admin@elevatemanager.com';
+    }
+
+    // Users can create their own profile.
+    // A user can read/update their own profile.
+    // The admin user can read ANY user profile.
     match /users/{userId} {
       allow create: if request.auth != null;
-      allow read, update: if request.auth.uid == userId;
+      allow read: if request.auth.uid == userId || isAdmin();
+      allow update: if request.auth.uid == userId;
 
-      // Users can fully manage the subcollections for their own team members.
+      // Users can fully manage their own team members and meeting history.
+      // The admin can read any team member's data and history for the dashboard.
       match /teamMembers/{memberId} {
-        allow read, create, update, delete: if request.auth.uid == userId;
+        allow create, update, delete: if request.auth.uid == userId;
+        allow read: if request.auth.uid == userId || isAdmin(); // Combined read rule
+        
         match /meetingHistory/{historyId} {
-          allow read, create, update, delete: if request.auth.uid == userId;
+          allow create, update, delete: if request.auth.uid == userId;
+          allow read: if request.auth.uid == userId || isAdmin(); // Combined read rule
         }
       }
     }
     
-    // The admin user can list all team members across the organization
-    // for the main dashboard view.
+    // This rule specifically allows the admin to perform the collectionGroup query
+    // which is needed for the main organization dashboard.
     match /{path=**}/teamMembers/{memberId} {
-      allow list: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email == 'admin@elevatemanager.com';
+      allow list: if isAdmin();
     }
 
     // Organizations can be queried, read, and created by any logged-in user.
