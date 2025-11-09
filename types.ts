@@ -49,6 +49,7 @@ export interface StructuredSummary {
   sentiment: string;
   impactScore: number;
   reasoning: string;
+  coachingMoment?: string;
 }
 
 export interface Conversation {
