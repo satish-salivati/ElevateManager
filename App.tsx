@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { MeetingDetails, AgendaItem, ActionItem, MeetingSummaryData, MeetingRecord, TeamMember, Conversation, AppUser, AppError } from './types';
 import Header from './components/Header';
 import MeetingSetup from './components/MeetingSetup';
@@ -258,6 +258,8 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
 
+    setAgenda(finalAgenda);
+    setActionItems(finalActionItems);
     setCoachingConversations(coachingData);
     setFeedbackConversations(feedbackData);
 
@@ -315,12 +317,13 @@ const App: React.FC = () => {
         };
         
         await finalizeMeeting(currentUser.uid, selectedTeamMember.id, newMeetingRecord, newPreviousMeeting, meetingDetails.careerAspirations);
-        const updatedMembers = await getTeamMembers(currentUser.uid, currentUser.organizationId);
-        setTeamMembers(updatedMembers);
     }
     
+    // Always navigate back and reset state
     setView('main');
     resetState();
+    // Then trigger a full, clean data refresh
+    fetchData();
   };
 
   const handleAddTeamMember = async (member: Omit<TeamMember, 'id' | 'userId' | 'previousMeeting' | 'meetingHistory' | 'organizationId'>) => {
@@ -419,7 +422,7 @@ const App: React.FC = () => {
         return null;
        case 'simulator':
         if (selectedTeamMember) {
-            return <ConversationSimulator teamMember={selectedTeamMember} onBack={handleFinishMeetingCycle} />;
+            return <ConversationSimulator teamMember={selectedTeamMember} onBack={() => { setView('main'); resetState(); }} />;
         }
         return null;
       default:
