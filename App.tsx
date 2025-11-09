@@ -32,7 +32,7 @@ service cloud.firestore {
 
     // Users can create their own profile, and can only read/update their own.
     match /users/{userId} {
-      allow create: if request.auth.uid == userId;
+      allow create: if request.auth != null;
       allow read, update: if request.auth.uid == userId;
 
       // Users can fully manage the subcollections for their own team members.
