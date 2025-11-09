@@ -3,6 +3,7 @@ export type ActionItemStatus = 'Pending' | 'In Progress' | 'Completed' | 'Blocke
 export type AppError = {
   type: 'PROFILE_CREATION_FAILED' | 'FETCH_FAILED' | 'ADMIN_INDEX_REQUIRED' | 'ADMIN_PERMISSIONS_REQUIRED';
   message: string;
+  details?: string;
 } | null;
 
 export interface AppUser {
