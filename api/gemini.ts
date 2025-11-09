@@ -2,7 +2,8 @@ import { GoogleGenAI } from "@google/genai";
 import { MeetingDetails, StructuredSummary, TeamMember, GrowthSuggestions } from "../types";
 
 // This function runs on the server, where process.env.API_KEY is securely available.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// The initialization is kept at the top level for performance (to be reused across invocations).
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 
 // --- Robust JSON Parsing ---
 /**
@@ -207,8 +208,25 @@ export const config = {
 };
 
 export default async function handler(req: Request) {
+  // Check if the API key is available. This is crucial for Vercel deployment.
+  if (!process.env.API_KEY) {
+    console.error("CRITICAL: API_KEY environment variable is not set in the Vercel project settings.");
+    return new Response(
+      JSON.stringify({ 
+        message: "AI service is not configured correctly. The API key is missing on the server. Please contact the administrator to set the API_KEY environment variable." 
+      }), 
+      { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
+  
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ message: 'Method not allowed' }), { status: 405 });
+    return new Response(JSON.stringify({ message: 'Method not allowed' }), { 
+        status: 405,
+        headers: { 'Content-Type': 'application/json' },
+    });
   }
 
   try {
@@ -238,7 +256,7 @@ export default async function handler(req: Request) {
         result = await handleSimulateConversationResponse(payload);
         break;
       default:
-        return new Response(JSON.stringify({ message: 'Invalid action' }), { status: 400 });
+        return new Response(JSON.stringify({ message: 'Invalid action' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
     }
 
     return new Response(JSON.stringify({ result }), {
@@ -248,6 +266,13 @@ export default async function handler(req: Request) {
 
   } catch (error: any) {
     console.error(`Error in action:`, error);
-    return new Response(JSON.stringify({ message: error.message || 'An internal server error occurred.' }), { status: 500 });
+    const errorMessage = error.message.includes('API key not valid') 
+      ? 'The provided API key is invalid. Please check the key in the Vercel environment variables.'
+      : error.message || 'An internal server error occurred.';
+      
+    return new Response(JSON.stringify({ message: errorMessage }), { 
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+    });
   }
 }
