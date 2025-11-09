@@ -116,10 +116,10 @@ const handleGenerateSummary = async (payload: { content: any }) => {
       - Meeting Notes: """${content.notes}"""
       - New Action Items: """${newActionItems || 'None'}"""
 
-      Synthesize this information to populate the response schema.
+      Your task is to synthesize this information and respond ONLY with a valid JSON object that conforms to the required schema. Do not add any introductory text, closing text, or markdown formatting like \`\`\`json.
     `;
     const response = await ai.models.generateContent({
-        model: 'gemini-2.5-pro', 
+        model: 'gemini-2.5-flash', 
         contents: prompt,
         config: {
             responseMimeType: "application/json",
@@ -143,7 +143,8 @@ const handleGetGrowthSuggestions = async (payload: { role: string, aspiration: s
     const { role, aspiration } = payload;
     const prompt = `
         You are an expert career coach. An employee with the role of "${role}" has a career aspiration to become a "${aspiration}".
-        Your task is to provide actionable growth suggestions. Ensure the URLs for articles are valid and publicly accessible.
+        
+        Your task is to provide actionable growth suggestions. Your response MUST be ONLY a valid JSON object that conforms to the required schema. Ensure the URLs for articles are valid and publicly accessible. Do not add any introductory text, closing text, or markdown formatting like \`\`\`json.
     `;
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash', 
