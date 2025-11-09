@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { MeetingDetails, AgendaItem, ActionItem, MeetingSummaryData, MeetingRecord, TeamMember, Conversation, AppUser, AppError } from './types';
+import { MeetingDetails, AgendaItem, ActionItem, MeetingSummaryData, MeetingRecord, TeamMember, Conversation, AppUser, AppError, Organization } from './types';
 import Header from './components/Header';
 import MeetingSetup from './components/MeetingSetup';
 import MeetingWorkspace from './components/MeetingWorkspace';
@@ -21,7 +21,9 @@ import {
     updateTeamMember,
     deleteTeamMember,
     finalizeMeeting,
-    getAllTeamDataForAdmin
+    getTeamDataForOrg,
+    getAllOrganizations,
+    getManagersForOrganization
 } from './services/firebaseService';
 
 const ADMIN_EMAIL = 'admin@elevatemanager.com'; // Hardcoded admin user for demo purposes
@@ -98,6 +100,13 @@ const App: React.FC = () => {
   const [isAdmin, setIsAdmin] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
 
+  // Admin dashboard specific state
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [selectedOrgId, setSelectedOrgId] = useState<string | null>(null);
+  const [managers, setManagers] = useState<AppUser[]>([]);
+  const [selectedManagerId, setSelectedManagerId] = useState<string | null>(null);
+
+
   const [selectedTeamMember, setSelectedTeamMember] = useState<TeamMember | null>(null);
 
   const [meetingDetails, setMeetingDetails] = useState<MeetingDetails | null>(null);
@@ -110,89 +119,119 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<AppError | null>(null);
   
-  // Add this check at the very top. If Firebase isn't configured, show a helpful guide.
   if (!isFirebaseConfigured) {
     return <FirebaseConfigErrorPage />;
   }
 
-  const fetchData = useCallback(async () => {
-    if (currentUser && currentUser.organizationId) { // Ensure orgId exists before fetching
+  const handleAdminDataError = (err: unknown) => {
+    const error = err as Error;
+    const errorMessage = error.message || 'An unknown error occurred.';
+    console.error("Failed to fetch admin data:", error);
+
+    if (errorMessage.includes('The query requires an index')) {
+          setError({
+              type: 'ADMIN_ORG_INDEX_REQUIRED',
+              message: "Admin Action Required: The organization dashboard needs a database index to function. Please open your browser's developer console (F12), find the error message from Firebase that contains a link, and click that link to create the index. This is a one-time setup. The index may take a few minutes to build. After it's ready, please refresh the page."
+          });
+    } else if (errorMessage.includes('Missing or insufficient permissions')) {
+        setError({
+            type: 'ADMIN_PERMISSIONS_REQUIRED',
+            message: "Could not load admin dashboard data due to a permissions issue. Your Firestore Security Rules need to be updated to allow the admin account to read data across the organization.",
+            details: FIRESTORE_RULES_GUIDE
+        });
+    } else {
+        setError({
+            type: 'FETCH_FAILED',
+            message: "Could not load organization data. This may be due to a network issue or a problem with your Firestore setup. Please check the console for more details."
+        });
+    }
+  }
+
+  const fetchManagerData = useCallback(async () => {
+    if (currentUser && currentUser.organizationId) {
         setIsLoading(true);
         setError(null);
         try {
             const members = await getTeamMembers(currentUser.uid, currentUser.organizationId);
             setTeamMembers(members);
-
-            if (isAdmin) {
-                const allMembers = await getAllTeamDataForAdmin();
-                setDashboardTeamMembers(allMembers);
-            }
+            setDashboardTeamMembers(members); // For manager's own dashboard
         } catch (err) {
-            const error = err as Error;
-            const errorMessage = error.message || 'An unknown error occurred.';
-            console.error("Failed to fetch user data:", error);
-
-            if (errorMessage.includes('The query requires an index')) {
-                  setError({
-                      type: 'ADMIN_INDEX_REQUIRED',
-                      message: "Admin Action Required: The organization dashboard needs a database index to function. Please open your browser's developer console (F12), find the error message from Firebase that contains a link, and click that link to create the index. This is a one-time setup. The index may take a few minutes to build. After it's ready, click 'Retry'."
-                  });
-            } else if (errorMessage.includes('Missing or insufficient permissions')) {
-                setError({
-                    type: 'ADMIN_PERMISSIONS_REQUIRED',
-                    message: "Could not load admin dashboard data due to a permissions issue. Your Firestore Security Rules need to be updated to allow the admin account to read data across the organization.",
-                    details: FIRESTORE_RULES_GUIDE
-                });
-            } else {
-                setError({
-                    type: 'FETCH_FAILED',
-                    message: "Could not load team data. This may be due to a network issue or a problem with your Firestore setup. Please check the console for more details."
-                });
-            }
+             setError({
+                type: 'FETCH_FAILED',
+                message: "Could not load your team data. Please check your connection and try again."
+            });
         } finally {
             setIsLoading(false);
         }
     }
-  }, [currentUser, isAdmin]);
+  }, [currentUser]);
+
+
+  const fetchAdminDashboardData = useCallback(async () => {
+    // This function fetches the data based on admin selections
+    if (!isAdmin || !selectedOrgId) {
+        setDashboardTeamMembers([]);
+        return;
+    }
+    
+    setIsLoading(true);
+    setError(null);
+    try {
+        let members;
+        if (selectedManagerId) {
+            // If a manager is selected, fetch their specific team
+            const manager = managers.find(m => m.uid === selectedManagerId);
+            if(manager) {
+                members = await getTeamMembers(manager.uid, manager.organizationId);
+            } else {
+                members = [];
+            }
+        } else {
+            // Otherwise, fetch all team members for the selected organization
+            members = await getTeamDataForOrg(selectedOrgId);
+        }
+        setDashboardTeamMembers(members);
+    } catch(err) {
+        handleAdminDataError(err);
+    } finally {
+        setIsLoading(false);
+    }
+  }, [isAdmin, selectedOrgId, selectedManagerId, managers]);
+
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(async (user) => {
         if (user) {
-            // Widen window to 10 seconds to robustly catch new users
             const creationTime = user.metadata.creationTime ? new Date(user.metadata.creationTime).getTime() : 0;
             const isNewUser = (new Date().getTime() - creationTime) < 10000;
 
             let userProfile = await getUserProfile(user.uid);
 
-            // If profile doesn't exist and it's a new user, start polling.
-            // This handles the race condition where onAuthStateChanged fires before the profile is written to Firestore.
             if (!userProfile && isNewUser) {
-                console.log("New user detected without a profile. Starting polling to resolve sign-up race condition...");
                 userProfile = await pollForUserProfile(user.uid);
             }
 
             if (userProfile) {
                 setCurrentUser(userProfile);
-                setIsAdmin(userProfile.email === ADMIN_EMAIL);
-                setError(null); // Clear any previous errors on successful load
+                const isAdminUser = userProfile.email === ADMIN_EMAIL;
+                setIsAdmin(isAdminUser);
+                setError(null);
                 setView('main');
+
+                if (isAdminUser) {
+                    setIsLoading(true);
+                    getAllOrganizations().then(setOrganizations).catch(handleAdminDataError).finally(() => setIsLoading(false));
+                }
             } else {
-                // **THE FIX**: Instead of logging out, stay logged in but show an error.
-                // This stops the logout loop and makes the actual problem visible to the user.
-                console.error("CRITICAL: User is authenticated but profile document is missing. This is likely a Firestore permissions issue from sign-up.");
-                
-                // Set a partial user object to keep the user "logged in" visually
+                console.error("CRITICAL: User is authenticated but profile document is missing.");
                 setCurrentUser({ uid: user.uid, email: user.email, organizationId: '' }); 
                 setIsAdmin(user.email === ADMIN_EMAIL);
-
-                // Set a specific, actionable error message
                 setError({
                     type: 'PROFILE_CREATION_FAILED',
                     message: "Your account was created, but your profile could not be saved to the database. This is a common setup issue caused by restrictive default Firestore Security Rules.",
                     details: FIRESTORE_RULES_GUIDE
                 });
-                
-                setView('main'); // Go to the main page to display the error prominently
+                setView('main');
             }
         } else {
             setCurrentUser(null);
@@ -207,13 +246,29 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  // Effect for regular manager data fetching
   useEffect(() => {
-    // Only fetch data if there isn't a critical profile creation error from the auth listener
-    if (currentUser && (!error || error.type !== 'PROFILE_CREATION_FAILED')) {
-      fetchData();
+    if (currentUser && !isAdmin && (!error || error.type !== 'PROFILE_CREATION_FAILED')) {
+      fetchManagerData();
     }
-  }, [currentUser, fetchData, error]);
+  }, [currentUser, isAdmin, fetchManagerData, error]);
 
+  // Effect for fetching managers when an organization is selected by admin
+  useEffect(() => {
+    if (isAdmin && selectedOrgId) {
+      setIsLoading(true);
+      setManagers([]); // Clear previous managers
+      setSelectedManagerId(null); // Reset manager selection
+      getManagersForOrganization(selectedOrgId).then(setManagers).catch(handleAdminDataError).finally(() => setIsLoading(false));
+    }
+  }, [isAdmin, selectedOrgId]);
+
+  // Effect to fetch dashboard data whenever admin selections change
+  useEffect(() => {
+    if(isAdmin) {
+        fetchAdminDashboardData();
+    }
+  }, [isAdmin, fetchAdminDashboardData]);
 
   const handleLogout = async () => {
       await doSignOut();
@@ -342,6 +397,9 @@ const App: React.FC = () => {
     setFeedbackConversations([]);
     setError(null);
     setSummaryData(null);
+    // Do not reset admin selections on simple navigation
+    // setSelectedOrgId(null);
+    // setSelectedManagerId(null);
   };
 
   const handleFinishMeetingCycle = async () => {
@@ -371,11 +429,9 @@ const App: React.FC = () => {
         await finalizeMeeting(currentUser.uid, selectedTeamMember.id, newMeetingRecord, newPreviousMeeting, meetingDetails.careerAspirations);
     }
     
-    // Always navigate back and reset state
     setView('main');
     resetState();
-    // Then trigger a full, clean data refresh
-    fetchData();
+    fetchManagerData();
   };
 
   const handleAddTeamMember = async (member: Omit<TeamMember, 'id' | 'userId' | 'previousMeeting' | 'meetingHistory' | 'organizationId'>) => {
@@ -425,7 +481,7 @@ const App: React.FC = () => {
       case 'main':
         return <MainPage 
             teamMembers={teamMembers}
-            dashboardTeamMembers={isAdmin ? dashboardTeamMembers : teamMembers}
+            dashboardTeamMembers={dashboardTeamMembers}
             isAdmin={isAdmin} 
             isLoading={isLoading}
             error={error}
@@ -434,7 +490,14 @@ const App: React.FC = () => {
             onAddMember={handleAddTeamMember}
             onUpdateMember={handleUpdateTeamMember}
             onDeleteMember={handleDeleteTeamMember}
-            onRetry={fetchData}
+            onRetry={isAdmin ? fetchAdminDashboardData : fetchManagerData}
+            // Admin specific props
+            organizations={organizations}
+            selectedOrgId={selectedOrgId}
+            onSelectOrg={setSelectedOrgId}
+            managers={managers}
+            selectedManagerId={selectedManagerId}
+            onSelectManager={setSelectedManagerId}
           />;
       case 'review':
         if (selectedTeamMember) {
