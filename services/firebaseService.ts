@@ -43,19 +43,7 @@ export const signUp = async (email: string, password: string, organizationName: 
     const auth = getFirebaseAuth();
     const db = getDB();
 
-    // Step 1: Find or Create the Organization ID
-    const orgsRef = db.collection('organizations');
-    const orgQuery = await orgsRef.where('name', '==', organizationName.trim()).limit(1).get();
-    
-    let orgId: string;
-    if (orgQuery.empty) {
-        const newOrgRef = await orgsRef.add({ name: organizationName.trim() });
-        orgId = newOrgRef.id;
-    } else {
-        orgId = orgQuery.docs[0].id;
-    }
-
-    // Step 2: Create the user in Firebase Auth
+    // Step 1: Create the user in Firebase Auth FIRST. This makes them authenticated for subsequent DB operations.
     const userCredential = await auth.createUserWithEmailAndPassword(email, password);
     const user = userCredential.user;
 
@@ -63,28 +51,40 @@ export const signUp = async (email: string, password: string, organizationName: 
         throw new Error("User creation failed. No user returned from Firebase Auth.");
     }
 
-    // Step 3: Create the user profile document in Firestore with a rollback mechanism.
+    // Step 2: Now that user is authenticated, perform all database operations.
+    // Wrap in a try/catch to roll back auth user creation on any database failure.
     try {
+        // Find or Create the Organization ID
+        const orgsRef = db.collection('organizations');
+        const orgQuery = await orgsRef.where('name', '==', organizationName.trim()).limit(1).get();
+        
+        let orgId: string;
+        if (orgQuery.empty) {
+            const newOrgRef = await orgsRef.add({ name: organizationName.trim() });
+            orgId = newOrgRef.id;
+        } else {
+            orgId = orgQuery.docs[0].id;
+        }
+
+        // Create the user profile document in Firestore.
         const userRef = db.collection("users").doc(user.uid);
         await userRef.set({
             email: user.email,
             organizationId: orgId,
         });
 
-        // Step 4: Verify the profile was created before finishing.
-        // This is the critical step to prevent the race condition.
-        const profile = await pollForUserProfile(user.uid, 5, 500); // Poll for 2.5 seconds
+        // Step 3: Verify the profile was created before finishing to avoid race conditions on the client.
+        const profile = await pollForUserProfile(user.uid, 5, 500); // Poll for ~2.5 seconds
         if (!profile) {
             throw new Error("Profile verification failed. The database write could not be confirmed.");
         }
 
         return user;
     } catch (dbError) {
-        // If the database write OR verification fails, we must delete the auth user
-        // to allow them to try signing up again without getting an "email already in use" error.
-        console.error("Firestore write/verification failed during sign up. Deleting auth user.", dbError);
+        // If ANY database operation fails, we MUST delete the auth user to prevent a stuck account.
+        console.error("Firestore operation failed during sign up. Deleting auth user to allow retry.", dbError);
         await user.delete();
-        // Re-throw the original database error to be displayed to the user.
+        // Re-throw the original database error so it's visible to the user.
         throw dbError;
     }
 };
