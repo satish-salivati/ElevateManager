@@ -69,6 +69,20 @@ export const getManagerFeedbackPrompts = async (): Promise<string[]> => {
     }
 }
 
+// FIX: Added getGrowthSuggestions function to provide AI-powered career development ideas.
+export const getGrowthSuggestions = async (details: MeetingDetails): Promise<GrowthSuggestions> => {
+    try {
+        return await callGeminiApi('getGrowthSuggestions', { details });
+    } catch (error) {
+        console.error("Fallback for getGrowthSuggestions:", error);
+        return {
+            skills: ["Could not generate suggestions due to an API error."],
+            articles: [{ title: "No articles were suggested.", url: "#", description: "" }],
+            projects: []
+        };
+    }
+};
+
 interface SummaryContent {
     details: MeetingDetails;
     agenda: any[]; // Using any to avoid circular dependency issues with AgendaItem in this context
@@ -76,31 +90,25 @@ interface SummaryContent {
     actionItems: any[]; // Using any to avoid circular dependency issues
 }
 
-export const generateSummary = async (content: SummaryContent): Promise<StructuredSummary> => {
+export const generateFinalReport = async (content: SummaryContent): Promise<{ summary: StructuredSummary, growthSuggestions: GrowthSuggestions }> => {
     try {
-        return await callGeminiApi('generateSummary', { content });
+        return await callGeminiApi('generateFinalReport', { content });
     } catch (error) {
-        console.error("Fallback for generateSummary:", error);
+        console.error("Fallback for generateFinalReport:", error);
         return {
-            keyPoints: ["Could not generate a structured summary. Please refer to your notes."],
-            decisions: ["No specific decisions were logged."],
-            sentiment: "Summary generation failed.",
-            impactScore: 0,
-            reasoning: "Failed to generate an impact score due to an API error.",
-            coachingMoment: "Could not generate a coaching moment due to an API error. Review meeting notes to identify opportunities for your next 1-on-1."
-        };
-    }
-};
-
-export const getGrowthSuggestions = async (context: MeetingDetails): Promise<GrowthSuggestions> => {
-    try {
-        return await callGeminiApi('getGrowthSuggestions', { context });
-    } catch (error) {
-        console.error("Fallback for getGrowthSuggestions:", error);
-        return {
-            skills: ["Could not generate suggestions due to an API error."],
-            articles: [{ title: "No articles were suggested.", url: "#", description: "" }],
-            projects: []
+            summary: {
+                keyPoints: ["Could not generate a structured summary. Please refer to your notes."],
+                decisions: ["No specific decisions were logged."],
+                sentiment: "Summary generation failed.",
+                impactScore: 0,
+                reasoning: "Failed to generate an impact score due to an API error.",
+                coachingMoment: "Could not generate a coaching moment due to an API error. Review meeting notes to identify opportunities for your next 1-on-1."
+            },
+            growthSuggestions: {
+                skills: ["Could not generate suggestions due to an API error."],
+                articles: [{ title: "No articles were suggested.", url: "#", description: "" }],
+                projects: []
+            }
         };
     }
 };
