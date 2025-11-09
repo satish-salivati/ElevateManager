@@ -23,7 +23,7 @@ const AuthPage: React.FC = () => {
                 await signIn(email, password);
             } else {
                 if (!organizationName.trim()) {
-                    setError("Organization name is required to sign up.");
+                    setError('Organization name is required.');
                     setIsLoading(false);
                     return;
                 }
@@ -36,11 +36,11 @@ const AuthPage: React.FC = () => {
             if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found') {
                 setError('Invalid email or password. Please try again.');
             } else if (err.code === 'auth/email-already-in-use') {
-                setError('This email is already in use. If you just tried to sign up and it failed, your account may have been partially created. Please try logging in.');
+                setError('This email is already in use. Please try logging in instead.');
             } else if (err.code === 'permission-denied' || message.toLowerCase().includes('permission denied') || message.toLowerCase().includes('missing or insufficient permissions')) {
-                setError("Database permission error during sign-up. Please check your Firestore security rules to ensure new users can be created in the 'users' collection. A common rule is `allow create: if request.auth.uid == userId;` for the `/users/{userId}` path.");
+                setError("Database permission error during sign-up. Please check your Firestore security rules to ensure new users can be created.");
             } else {
-                setError('An unknown error occurred. Please check the console and try again.');
+                setError(message || 'An unknown error occurred. Please check the console and try again.');
             }
         } finally {
             setIsLoading(false);
@@ -62,17 +62,17 @@ const AuthPage: React.FC = () => {
             <Card>
                 <form onSubmit={handleSubmit} className="p-8 space-y-6">
                      <h2 className="text-xl font-semibold text-center text-slate-800">{isLogin ? 'Manager Login' : 'Create Account'}</h2>
-                     {!isLogin && (
-                        <Input 
+                    {!isLogin && (
+                         <Input 
                             label="Organization Name"
                             id="organizationName"
                             type="text"
                             value={organizationName}
                             onChange={(e) => setOrganizationName(e.target.value)}
-                            placeholder="Your Company Inc."
+                            placeholder="e.g., Acme Corporation"
                             required
                         />
-                     )}
+                    )}
                     <Input 
                         label="Email Address"
                         id="email"
