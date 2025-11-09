@@ -1,6 +1,7 @@
 import React from 'react';
 import { AppError } from '../../types';
 import Button from './Button';
+import CodeBlock from './CodeBlock';
 
 interface FirestoreRulesErrorProps {
   error: AppError;
@@ -33,11 +34,9 @@ const FirestoreRulesError: React.FC<FirestoreRulesErrorProps> = ({ error, onRetr
       </svg>
       <h3 className="mt-4 text-xl font-bold text-red-900">{error.type === 'PROFILE_CREATION_FAILED' ? 'Account Setup Incomplete' : 'Admin Permissions Required'}</h3>
       <p className="mt-2 text-sm text-red-700 max-w-2xl mx-auto">{error.message}</p>
-      <div className="mt-6 text-left max-w-2xl mx-auto bg-slate-800 text-white p-4 rounded-md text-sm font-mono">
-        <p className="mb-2 text-slate-300">// This complete ruleset fixes the issue. Paste it into your `firestore.rules` file:</p>
-        <pre className="whitespace-pre-wrap">
-          {error.details}
-        </pre>
+      <div className="mt-6 text-left max-w-2xl mx-auto">
+        <p className="mb-2 text-slate-600 font-semibold">// This complete ruleset fixes the issue. Paste it into your `firestore.rules` file:</p>
+        <CodeBlock code={error.details!} language="rules" />
       </div>
       <p className="mt-4 text-xs text-slate-500">After updating your security rules in the Firebase Console, please {onRetry ? 'retry.' : 'refresh the page.'}</p>
       <div className="mt-6">
