@@ -6,7 +6,7 @@ import "firebase/compat/auth";
 import "firebase/compat/firestore";
 
 import { getFirebaseAuth, getDB, isFirebaseConfigured } from "../config/firebase";
-import { TeamMember, MeetingRecord, AppUser } from "../types";
+import { TeamMember, MeetingRecord, AppUser, Organization } from "../types";
 
 // This tells TypeScript that the 'firebase' object (from the global script) exists and has the correct types.
 // FIX: Use the imported 'Firebase' type to correctly type the global constant.
@@ -242,18 +242,29 @@ export const finalizeMeeting = async (
 
 // --- ADMIN ANALYTICS ---
 
-export const getAllTeamDataForAdmin = async (): Promise<TeamMember[]> => {
+export const getAllOrganizations = async (): Promise<Organization[]> => {
+    if (!isFirebaseConfigured) return [];
+    const db = getDB();
+    const snapshot = await db.collection('organizations').get();
+    return snapshot.docs.map(doc => ({ id: doc.id, name: doc.data().name as string }));
+}
+
+export const getManagersForOrganization = async (organizationId: string): Promise<AppUser[]> => {
+    if (!isFirebaseConfigured) return [];
+    const db = getDB();
+    const snapshot = await db.collection('users').where('organizationId', '==', organizationId).get();
+    return snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as AppUser));
+}
+
+export const getTeamDataForOrg = async (organizationId: string): Promise<TeamMember[]> => {
     if (!isFirebaseConfigured) return [];
     const db = getDB();
     
-    // Query the collection group without any filter to fetch all team members.
-    // The security is handled by Firestore Rules, which only allow the admin user to run this list query.
-    const membersQuery = db.collectionGroup('teamMembers');
+    const membersQuery = db.collectionGroup('teamMembers').where('organizationId', '==', organizationId);
     const snapshot = await membersQuery.get();
 
     const members: TeamMember[] = await Promise.all(snapshot.docs.map(async (memberDoc) => {
         const memberData = memberDoc.data();
-        // The path to the history subcollection is part of the member's document reference path.
         const historyCol = memberDoc.ref.collection('meetingHistory');
         const historySnapshot = await historyCol.orderBy('date', 'desc').get();
         const meetingHistory = historySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MeetingRecord));
