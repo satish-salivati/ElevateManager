@@ -8,6 +8,7 @@ import ActionItemInsight from './ActionItemInsight';
 import ManagerCoachingInsight from './ManagerCoachingInsight';
 import Spinner from './common/Spinner';
 import Button from './common/Button';
+import FirestoreRulesError from './common/FirestoreRulesError';
 
 interface DashboardProps {
   teamMembers: TeamMember[];
@@ -30,6 +31,10 @@ const Dashboard: React.FC<DashboardProps> = ({ teamMembers, error, onRetry, isLo
   }
 
   if (error) {
+    if (error.type === 'ADMIN_PERMISSIONS_REQUIRED' || error.type === 'ADMIN_INDEX_REQUIRED') {
+        return <FirestoreRulesError error={error} onRetry={onRetry} />;
+    }
+
      return (
         <div className="text-center py-16 border-2 border-dashed border-red-300 rounded-lg bg-red-50">
             <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
