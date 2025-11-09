@@ -53,7 +53,7 @@ service cloud.firestore {
     // Organizations can be created by any logged-in user.
     // This is a simplified rule for an MVP.
     match /organizations/{orgId} {
-      allow get, create: if request.auth != null;
+      allow read, create: if request.auth != null;
     }
   }
 }`;
