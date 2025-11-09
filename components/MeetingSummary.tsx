@@ -39,6 +39,9 @@ const MeetingSummary: React.FC<MeetingSummaryProps> = ({ summaryData, onStartNew
     textToCopy += "Decisions Made:\n";
     textToCopy += (summary.decisions.length > 0 ? summary.decisions.map(d => `- ${d}`).join('\n') : 'None') + '\n\n';
     textToCopy += `Overall Sentiment: ${summary.sentiment}\n\n`;
+    if (summary.coachingMoment) {
+        textToCopy += `Manager's Coaching Moment:\n- ${summary.coachingMoment}\n\n`;
+    }
     textToCopy += "Action Items:\n";
     textToCopy += actionItems.map(item => `- [${item.status}] ${item.text}${item.dueDate ? ` (Due: ${formatDate(item.dueDate)})` : ''}${item.comments ? `\n  - Comment: ${item.comments}` : ''}`).join('\n');
     navigator.clipboard.writeText(textToCopy);
@@ -84,6 +87,25 @@ const MeetingSummary: React.FC<MeetingSummaryProps> = ({ summaryData, onStartNew
           </div>
         </div>
       </Card>
+
+      {summary.coachingMoment && (
+        <Card className="bg-indigo-50 border-indigo-200">
+            <div className="p-6 flex items-start gap-4">
+                <div className="flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-brand-primary" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                    </svg>
+                </div>
+                <div>
+                    <h4 className="font-semibold text-slate-800">Manager's Coaching Moment</h4>
+                    <blockquote className="mt-1 text-sm text-slate-700 italic">
+                        "{summary.coachingMoment}"
+                    </blockquote>
+                    <p className="text-xs text-slate-500 mt-2">- AI suggestion for your next 1-on-1</p>
+                </div>
+            </div>
+        </Card>
+      )}
 
       <Card>
         <div className="p-6">
