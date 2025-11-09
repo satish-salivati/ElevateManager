@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { TeamMember, AppError } from '../types';
+import { TeamMember, AppError, Organization, AppUser } from '../types';
 import TeamListPage from './TeamListPage';
 import Dashboard from './Dashboard';
 import DataExplorer from './DataExplorer';
@@ -16,6 +16,13 @@ interface MainPageProps {
   onUpdateMember: (member: TeamMember) => Promise<void>;
   onDeleteMember: (memberId: string) => void;
   onRetry: () => void;
+  // Admin props
+  organizations: Organization[];
+  selectedOrgId: string | null;
+  onSelectOrg: (id: string) => void;
+  managers: AppUser[];
+  selectedManagerId: string | null;
+  onSelectManager: (id: string) => void;
 }
 
 type ActiveTab = 'team' | 'dashboard' | 'explorer';
@@ -33,6 +40,12 @@ const MainPage: React.FC<MainPageProps> = (props) => {
       onUpdateMember, 
       onDeleteMember,
       onRetry,
+      organizations,
+      selectedOrgId,
+      onSelectOrg,
+      managers,
+      selectedManagerId,
+      onSelectManager,
     } = props;
   const [activeTab, setActiveTab] = useState<ActiveTab>(isAdmin ? 'dashboard' : 'team');
 
@@ -90,6 +103,13 @@ const MainPage: React.FC<MainPageProps> = (props) => {
             error={error}
             isLoading={isLoading}
             onRetry={onRetry}
+            isAdmin={isAdmin}
+            organizations={organizations}
+            selectedOrgId={selectedOrgId}
+            onSelectOrg={onSelectOrg}
+            managers={managers}
+            selectedManagerId={selectedManagerId}
+            onSelectManager={onSelectManager}
             />}
         {activeTab === 'explorer' && isAdmin && <DataExplorer teamMembers={dashboardTeamMembers} />}
       </div>
