@@ -30,12 +30,12 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigateToAuth }) => {
               <span className="text-brand-primary">Manager</span>
             </h1>
           </div>
-          <div className="space-x-2">
+          <div className="space-x-1 sm:space-x-2">
             <Button onClick={onNavigateToAuth} variant="secondary" size="md">
               Login
             </Button>
              <Button onClick={onNavigateToAuth} size="md">
-              Sign Up Free
+              Sign Up<span className="hidden sm:inline">&nbsp;Free</span>
             </Button>
           </div>
         </div>
