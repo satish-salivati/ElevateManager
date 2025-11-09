@@ -242,12 +242,13 @@ export const finalizeMeeting = async (
 
 // --- ADMIN ANALYTICS ---
 
-export const getAllTeamDataForAdmin = async (organizationId: string): Promise<TeamMember[]> => {
+export const getAllTeamDataForAdmin = async (): Promise<TeamMember[]> => {
     if (!isFirebaseConfigured) return [];
     const db = getDB();
     
-    // Query the collection group but filter strictly by the admin's organizationId
-    const membersQuery = db.collectionGroup('teamMembers').where("organizationId", "==", organizationId);
+    // Query the collection group without any filter to fetch all team members.
+    // The security is handled by Firestore Rules, which only allow the admin user to run this list query.
+    const membersQuery = db.collectionGroup('teamMembers');
     const snapshot = await membersQuery.get();
 
     const members: TeamMember[] = await Promise.all(snapshot.docs.map(async (memberDoc) => {
