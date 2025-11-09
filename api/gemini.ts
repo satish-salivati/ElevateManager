@@ -115,8 +115,12 @@ const handleGenerateSummary = async (payload: { content: any }) => {
       - Completed Agenda Items: ${completedAgenda || 'None'}
       - Meeting Notes: """${content.notes}"""
       - New Action Items: """${newActionItems || 'None'}"""
+      - Stated Challenges: ${[...content.details.employeeChallenges, content.details.employeeChallengesOther].filter(Boolean).join(', ')}
 
       Your task is to synthesize this information and respond ONLY with a valid JSON object that conforms to the required schema. Do not add any introductory text, closing text, or markdown formatting like \`\`\`json.
+      
+      - For 'impactScore', calculate it based on goal progress, sentiment, and whether clear action items were defined.
+      - For 'coachingMoment', provide a single, actionable tip FOR THE MANAGER on what to focus on in the NEXT meeting based on the notes and challenges.
     `;
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-pro', 
@@ -130,21 +134,30 @@ const handleGenerateSummary = async (payload: { content: any }) => {
                     decisions: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of any decisions that were made." },
                     sentiment: { type: Type.STRING, description: "A single string describing the overall sentiment of the meeting (e.g., 'Positive and productive', 'Slightly concerned but optimistic')." },
                     impactScore: { type: Type.NUMBER, description: "A number between 0 and 100 representing the meeting's effectiveness and progress toward the goal." },
-                    reasoning: { type: Type.STRING, description: "A brief explanation for the impact score, considering goal progress, clarity of action items, and overall sentiment." }
+                    reasoning: { type: Type.STRING, description: "A brief explanation for the impact score, considering goal progress, clarity of action items, and overall sentiment." },
+                    coachingMoment: { type: Type.STRING, description: "A single, actionable tip for the manager for the next 1-on-1."}
                 },
-                required: ['keyPoints', 'decisions', 'sentiment', 'impactScore', 'reasoning']
+                required: ['keyPoints', 'decisions', 'sentiment', 'impactScore', 'reasoning', 'coachingMoment']
             },
         },
     });
     return parseJsonResponse(response.text);
 };
 
-const handleGetGrowthSuggestions = async (payload: { role: string, aspiration: string }) => {
-    const { role, aspiration } = payload;
+const handleGetGrowthSuggestions = async (payload: { context: MeetingDetails }) => {
+    const { context } = payload;
+    const formatList = (list: string[], other?: string) => [...list, other].filter(Boolean).join(', ') || 'Not specified';
     const prompt = `
-        You are an expert career coach. An employee with the role of "${role}" has a career aspiration to become a "${aspiration}".
+        You are an expert career coach. An employee with the role of "${context.role}" has a career aspiration to become a "${context.careerAspirations}".
         
-        Your task is to provide actionable growth suggestions. Your response MUST be ONLY a valid JSON object that conforms to the required schema. Ensure the URLs for articles are valid and publicly accessible. Do not add any introductory text, closing text, or markdown formatting like \`\`\`json.
+        Here is a detailed, real-time profile of the employee based on their latest 1-on-1 meeting:
+        - Stated Strengths: ${formatList(context.employeeStrengths, context.employeeStrengthsOther)}
+        - Current Challenges: ${formatList(context.employeeChallenges, context.employeeChallengesOther)}
+        - Current Project Focus: ${context.goal}
+        - Project Status: ${context.projectStatus}
+        - Recent Sentiment: ${context.sentiment}
+        
+        Your task is to provide hyper-personalized and actionable growth suggestions based on this specific context. Your response MUST be ONLY a valid JSON object that conforms to the required schema. Ensure the URLs for articles are valid and publicly accessible. Do not add any introductory text, closing text, or markdown formatting like \`\`\`json.
     `;
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-pro', 
@@ -154,8 +167,8 @@ const handleGetGrowthSuggestions = async (payload: { role: string, aspiration: s
             responseSchema: {
                 type: Type.OBJECT,
                 properties: {
-                    skills: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of 1-2 key skills to develop for this career transition." },
-                    projects: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of 1-2 practical project ideas to gain relevant experience." },
+                    skills: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of 1-2 key skills to develop for this career transition, directly related to their stated challenges." },
+                    projects: { type: Type.ARRAY, items: { type: Type.STRING }, description: "A list of 1-2 practical project ideas to gain relevant experience, leveraging their strengths." },
                     articles: {
                         type: Type.ARRAY,
                         items: {
