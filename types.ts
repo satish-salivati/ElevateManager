@@ -1,10 +1,15 @@
 export type ActionItemStatus = 'Pending' | 'In Progress' | 'Completed' | 'Blocked';
 
 export type AppError = {
-  type: 'PROFILE_CREATION_FAILED' | 'FETCH_FAILED' | 'ADMIN_INDEX_REQUIRED' | 'ADMIN_PERMISSIONS_REQUIRED';
+  type: 'PROFILE_CREATION_FAILED' | 'FETCH_FAILED' | 'ADMIN_INDEX_REQUIRED' | 'ADMIN_PERMISSIONS_REQUIRED' | 'ADMIN_ORG_INDEX_REQUIRED';
   message: string;
   details?: string;
 } | null;
+
+export interface Organization {
+    id: string;
+    name: string;
+}
 
 export interface AppUser {
   uid: string;
@@ -61,6 +66,7 @@ export interface Conversation {
 export interface MeetingSummaryData {
   summary: StructuredSummary;
   actionItems: ActionItem[];
+  growthSuggestions: GrowthSuggestions;
 }
 
 export interface PreviousMeeting {
