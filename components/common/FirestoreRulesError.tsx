@@ -12,7 +12,7 @@ interface FirestoreRulesErrorProps {
 const FirestoreRulesError: React.FC<FirestoreRulesErrorProps> = ({ error, onRetry }) => {
   if (!error) return null;
 
-  if (error.type === 'ADMIN_INDEX_REQUIRED') {
+  if (error.type === 'ADMIN_INDEX_REQUIRED' || error.type === 'ADMIN_ORG_INDEX_REQUIRED') {
       return (
         <div className="text-center py-12 px-4 border-2 border-dashed border-amber-300 rounded-lg bg-amber-50">
           <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
