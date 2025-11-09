@@ -50,10 +50,10 @@ service cloud.firestore {
       allow list: if get(/databases/$(database)/documents/users/$(request.auth.uid)).data.email == 'admin@elevatemanager.com';
     }
 
-    // Organizations can be created and read by any logged-in user.
-    // 'read' is required to check if an organization exists during sign-up.
+    // Organizations can be queried, read, and created by any logged-in user.
+    // 'list' is required for the sign-up query to check if an organization exists.
     match /organizations/{orgId} {
-      allow read, create: if request.auth != null;
+      allow list, read, create: if request.auth != null;
     }
   }
 }`;
