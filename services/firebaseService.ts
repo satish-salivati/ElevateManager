@@ -1,15 +1,26 @@
-import firebase from "firebase/compat/app";
-import {
-  User
-} from "firebase/auth";
+// Import Firebase types for type safety. The actual Firebase object is loaded globally.
+// @google/genai-fix: Changed `import * as Firebase` to a default import to correctly load the Firebase compat library, which fixes the type of the global `firebase` variable.
+import Firebase from "firebase/compat/app";
+// These imports augment the 'firebase' type definition.
+import "firebase/compat/auth";
+import "firebase/compat/firestore";
+
 import { getFirebaseAuth, getDB, isFirebaseConfigured } from "../config/firebase";
 import { TeamMember, MeetingRecord, AppUser } from "../types";
+
+// This tells TypeScript that the 'firebase' object (from the global script) exists and has the correct types.
+// FIX: Use the imported 'Firebase' type to correctly type the global constant.
+// @google/genai-fix: Changed to 'typeof Firebase' to use the type of the imported namespace, resolving the "Cannot use namespace as a type" error.
+declare const firebase: typeof Firebase;
+
 
 const NOT_CONFIGURED_ERROR = new Error("Firebase is not configured. Please add your Firebase project configuration to `config/firebase.ts`.");
 
 // --- AUTH FUNCTIONS ---
 
-export const onAuthStateChanged = (callback: (user: User | null) => void) => {
+// FIX: The 'User' type is not available as a direct import. Use 'firebase.User' to reference the type from the global namespace.
+// @google/genai-fix: Corrected the Firebase User type from `firebase.auth.User` to `Firebase.User`. The User type is on the root `firebase` namespace.
+export const onAuthStateChanged = (callback: (user: Firebase.User | null) => void) => {
   if (!isFirebaseConfigured) {
       console.error(NOT_CONFIGURED_ERROR.message);
       callback(null);
@@ -17,7 +28,6 @@ export const onAuthStateChanged = (callback: (user: User | null) => void) => {
   }
   try {
       const auth = getFirebaseAuth();
-      // Fix: Use v8-compat onAuthStateChanged
       return auth.onAuthStateChanged(callback);
   } catch (error) {
       console.error("Firebase Auth Error in onAuthStateChanged:", error);
@@ -26,13 +36,14 @@ export const onAuthStateChanged = (callback: (user: User | null) => void) => {
   }
 };
 
-export const signUp = async (email: string, password: string, organizationName: string): Promise<User> => {
+// FIX: The 'User' type is not available as a direct import. Use 'firebase.User' to reference the type from the global namespace.
+// @google/genai-fix: Corrected the Firebase User type from `firebase.auth.User` to `Firebase.User`. The User type is on the root `firebase` namespace.
+export const signUp = async (email: string, password: string, organizationName: string): Promise<Firebase.User> => {
   if (!isFirebaseConfigured) return Promise.reject(NOT_CONFIGURED_ERROR);
   const auth = getFirebaseAuth();
   const db = getDB();
 
   // Step 1: Create the user in Firebase Auth
-  // Fix: Use v8-compat createUserWithEmailAndPassword
   const userCredential = await auth.createUserWithEmailAndPassword(email, password);
   const user = userCredential.user;
 
@@ -40,43 +51,31 @@ export const signUp = async (email: string, password: string, organizationName: 
     throw new Error("User creation failed.");
   }
 
-  // Step 2: Handle organization and create user profile
+  // Step 2: ALWAYS create a new organization for simplicity and to avoid race conditions.
+  // This is a robust approach for an MVP.
   const organizationsRef = db.collection("organizations");
   const usersRef = db.collection("users");
 
-  // Use a transaction to safely find or create the organization
-  const organizationId = await db.runTransaction(async (transaction) => {
-    // Fix: Use v8-compat query syntax
-    const orgQuery = organizationsRef.where("name", "==", organizationName);
-    const querySnapshot = await transaction.get(orgQuery);
-    
-    if (!querySnapshot.empty) {
-      // Organization exists, return its ID
-      return querySnapshot.docs[0].id;
-    } else {
-      // Organization doesn't exist, create it
-      const newOrgRef = organizationsRef.doc();
-      transaction.set(newOrgRef, { name: organizationName, createdAt: firebase.firestore.Timestamp.now() });
-      return newOrgRef.id;
-    }
-  });
+  const newOrgRef = organizationsRef.doc();
+  await newOrgRef.set({ name: organizationName, createdAt: firebase.firestore.Timestamp.now() });
+  const organizationId = newOrgRef.id;
 
   // Step 3: Create the user's profile document in Firestore
   const userProfile: Omit<AppUser, 'uid'> = {
     email: user.email,
     organizationId,
   };
-  // Fix: Use v8-compat set
   await usersRef.doc(user.uid).set(userProfile);
 
   return user;
 };
 
 
-export const signIn = async (email: string, password: string): Promise<User> => {
+// FIX: The 'User' type is not available as a direct import. Use 'firebase.User' to reference the type from the global namespace.
+// @google/genai-fix: Corrected the Firebase User type from `firebase.auth.User` to `Firebase.User`. The User type is on the root `firebase` namespace.
+export const signIn = async (email: string, password: string): Promise<Firebase.User> => {
   if (!isFirebaseConfigured) return Promise.reject(NOT_CONFIGURED_ERROR);
   const auth = getFirebaseAuth();
-  // Fix: Use v8-compat signInWithEmailAndPassword
   const userCredential = await auth.signInWithEmailAndPassword(email, password);
   if (!userCredential.user) {
     throw new Error("Sign in failed, user not found.");
@@ -87,14 +86,12 @@ export const signIn = async (email: string, password: string): Promise<User> => 
 export const doSignOut = (): Promise<void> => {
   if (!isFirebaseConfigured) return Promise.resolve();
   const auth = getFirebaseAuth();
-  // Fix: Use v8-compat signOut
   return auth.signOut();
 };
 
 export const getUserProfile = async (uid: string): Promise<AppUser | null> => {
     if (!isFirebaseConfigured) return null;
     const db = getDB();
-    // Fix: Use v8-compat doc().get()
     const userDocRef = db.collection('users').doc(uid);
     const docSnap = await userDocRef.get();
     if (docSnap.exists) {
@@ -108,7 +105,6 @@ export const getUserProfile = async (uid: string): Promise<AppUser | null> => {
 
 const getTeamMembersCollection = (userId: string) => {
     const db = getDB();
-    // Fix: Use v8-compat collection path
     return db.collection('users').doc(userId).collection('teamMembers');
 }
 
@@ -119,13 +115,11 @@ export const getTeamMembers = async (userId: string, organizationId: string): Pr
   
   // Scoped to user and organization for security
   const teamMembersCol = getTeamMembersCollection(userId);
-  // Fix: Use v8-compat query syntax
   const q = teamMembersCol.where("organizationId", "==", organizationId);
   const snapshot = await q.get();
   
   const members: TeamMember[] = await Promise.all(snapshot.docs.map(async (memberDoc) => {
     const memberData = memberDoc.data();
-    // Fix: Use v8-compat collection path and query
     const historyCol = db.collection('users').doc(userId).collection('teamMembers').doc(memberDoc.id).collection('meetingHistory');
     const historySnapshot = await historyCol.orderBy('date', 'desc').get();
     const meetingHistory = historySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MeetingRecord));
@@ -153,7 +147,6 @@ export const addTeamMember = async (userId: string, organizationId: string, memb
         organizationId,
         previousMeeting: null,
     };
-    // Fix: Use v8-compat add
     const docRef = await getTeamMembersCollection(userId).add(newMemberData);
     return { ...newMemberData, id: docRef.id, meetingHistory: [] };
 };
@@ -161,7 +154,6 @@ export const addTeamMember = async (userId: string, organizationId: string, memb
 export const updateTeamMember = async (userId: string, member: TeamMember): Promise<void> => {
     if (!isFirebaseConfigured) return Promise.reject(NOT_CONFIGURED_ERROR);
     const db = getDB();
-    // Fix: Use v8-compat doc().update()
     const memberDocRef = db.collection('users').doc(userId).collection('teamMembers').doc(member.id);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { id, meetingHistory, ...dataToUpdate } = member; 
@@ -171,7 +163,6 @@ export const updateTeamMember = async (userId: string, member: TeamMember): Prom
 export const deleteTeamMember = async (userId: string, memberId: string): Promise<void> => {
     if (!isFirebaseConfigured) return Promise.reject(NOT_CONFIGURED_ERROR);
     const db = getDB();
-    // Fix: Use v8-compat doc().delete()
     const memberDocRef = db.collection('users').doc(userId).collection('teamMembers').doc(memberId);
     await memberDocRef.delete();
 };
@@ -188,7 +179,6 @@ export const finalizeMeeting = async (
 ) => {
     if (!isFirebaseConfigured) return Promise.reject(NOT_CONFIGURED_ERROR);
     const db = getDB();
-    // Fix: Use v8-compat batch
     const batch = db.batch();
 
     // 1. Add new record to meetingHistory subcollection
@@ -214,7 +204,6 @@ export const getAllTeamDataForAdmin = async (organizationId: string): Promise<Te
     const db = getDB();
     
     // Query the collection group but filter strictly by the admin's organizationId
-    // Fix: Use v8-compat collectionGroup and query
     const membersQuery = db.collectionGroup('teamMembers').where("organizationId", "==", organizationId);
     const snapshot = await membersQuery.get();
 
