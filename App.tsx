@@ -425,7 +425,12 @@ const App: React.FC = () => {
             careerAspirations: meetingDetails.careerAspirations,
         };
         
-        await finalizeMeeting(currentUser.uid, selectedTeamMember.id, newMeetingRecord, newPreviousMeeting, meetingDetails.careerAspirations);
+        try {
+          await finalizeMeeting(currentUser.uid, selectedTeamMember.id, newMeetingRecord, newPreviousMeeting, meetingDetails.careerAspirations);
+        } catch(e) {
+          console.error("Failed to save meeting record:", e);
+          // In a real application, we might set an error state here to show a toast message.
+        }
     }
     
     setView('main');
