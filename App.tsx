@@ -328,7 +328,8 @@ const App: React.FC = () => {
     }
   }, [selectedTeamMember]);
   
-  const constructFullNotes = (
+  // FIX: Memoize constructFullNotes to ensure it's a stable dependency for other callbacks.
+  const constructFullNotes = useCallback((
       agendaItems: AgendaItem[], 
       coachingConvos: Conversation[], 
       feedbackConvos: Conversation[]
@@ -354,7 +355,7 @@ const App: React.FC = () => {
           "\nManager Feedback Received:",
           feedbackNotes || "No feedback recorded."
       ].join('\n');
-  };
+  }, []);
 
   const handleEndMeeting = useCallback(async (
     finalAgenda: AgendaItem[],
@@ -392,7 +393,7 @@ const App: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [meetingDetails]);
+  }, [meetingDetails, constructFullNotes]);
 
   const resetState = () => {
     setSelectedTeamMember(null);
@@ -406,7 +407,7 @@ const App: React.FC = () => {
     setSummaryData(null);
   };
 
-  const handleFinishMeetingCycle = async () => {
+  const handleFinishMeetingCycle = useCallback(async () => {
     if (selectedTeamMember && meetingDetails && summaryData && currentUser) {
         // FIX: Use the finalized agenda from state for consistent note construction.
         const comprehensiveNotes = constructFullNotes(finalizedAgenda, coachingConversations, feedbackConversations);
@@ -442,7 +443,7 @@ const App: React.FC = () => {
     setView('main');
     resetState();
     fetchManagerData();
-  };
+  }, [currentUser, fetchManagerData, meetingDetails, selectedTeamMember, summaryData, finalizedAgenda, coachingConversations, feedbackConversations, constructFullNotes]);
 
   const handleAddTeamMember = async (member: Omit<TeamMember, 'id' | 'userId' | 'previousMeeting' | 'meetingHistory' | 'organizationId'>) => {
       if (!currentUser) throw new Error("User not logged in.");
