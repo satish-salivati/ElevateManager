@@ -362,7 +362,6 @@ const App: React.FC = () => {
     feedbackData: Conversation[]
   ) => {
     if (!meetingDetails) return;
-    setIsLoading(true);
     setError(null);
     
     try {
@@ -374,7 +373,6 @@ const App: React.FC = () => {
         actionItems: finalActionItems,
       });
 
-      // FIX: Batch all state updates after the await call to prevent premature re-renders.
       setFinalizedAgenda(finalAgenda);
       setActionItems(finalActionItems);
       setCoachingConversations(coachingData);
@@ -389,8 +387,7 @@ const App: React.FC = () => {
     } catch (err) {
       setError({type: 'FETCH_FAILED', message: 'Failed to generate summary and suggestions. Please try again.'});
       console.error(err);
-    } finally {
-      setIsLoading(false);
+      throw err; // Re-throw the error so the calling component can handle its loading state
     }
   }, [meetingDetails, constructFullNotes]);
 
@@ -531,7 +528,6 @@ const App: React.FC = () => {
             actionItems={actionItems}
             setActionItems={setActionItems}
             onEndMeeting={handleEndMeeting}
-            isSummarizing={isLoading}
             previousMeeting={selectedTeamMember.previousMeeting}
             meetingHistory={selectedTeamMember.meetingHistory}
           />;
