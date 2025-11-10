@@ -1,18 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MeetingDetails, AgendaItem, ActionItem, PreviousMeeting, MeetingRecord, Conversation } from '../types';
 import ActionItemsSection from './ActionItemsSection';
 import HistoricalContext from './HistoricalContext';
 import Button from './common/Button';
 import InsightsDashboard from './InsightsDashboard';
-import GrowthCareerSection from './GrowthCareerSection';
 import AgendaWithNotes from './AgendaWithNotes';
 import CoachingPhase from './CoachingPhase';
 import FeedbackPhase from './FeedbackPhase';
 
 interface MeetingWorkspaceProps {
   meetingDetails: MeetingDetails;
-  agenda: AgendaItem[];
-  setAgenda: React.Dispatch<React.SetStateAction<AgendaItem[]>>;
+  initialAgenda: AgendaItem[];
   actionItems: ActionItem[];
   setActionItems: React.Dispatch<React.SetStateAction<ActionItem[]>>;
   onEndMeeting: (agenda: AgendaItem[], actionItems: ActionItem[], coachingData: Conversation[], feedbackData: Conversation[]) => void;
@@ -35,8 +33,7 @@ const statusColors: Record<MeetingDetails['projectStatus'], string> = {
 const MeetingWorkspace: React.FC<MeetingWorkspaceProps> = (props) => {
   const { 
     meetingDetails, 
-    agenda, 
-    setAgenda, 
+    initialAgenda,
     actionItems, 
     setActionItems, 
     onEndMeeting,
@@ -45,20 +42,28 @@ const MeetingWorkspace: React.FC<MeetingWorkspaceProps> = (props) => {
     meetingHistory,
   } = props;
 
+  // FIX: Manage agenda state locally to prevent app-wide re-renders on text input.
+  const [agenda, setAgenda] = useState<AgendaItem[]>(initialAgenda);
   const [phase, setPhase] = useState<MeetingPhase>('agenda');
   const [coachingConvos, setCoachingConvos] = useState<Conversation[]>([]);
-  const [feedbackConvos, setFeedbackConvos] = useState<Conversation[]>([]);
+  
+  // FIX: Use a ref to prevent stale state issues when passing coaching data to the final summary step.
+  const coachingConvosRef = useRef<Conversation[]>([]);
+
+  useEffect(() => {
+    setAgenda(initialAgenda);
+  }, [initialAgenda]);
 
   const carriedOverItems = previousMeeting?.actionItems.filter(item => item.status !== 'Completed') || [];
 
   const handleCoachingComplete = (conversations: Conversation[]) => {
     setCoachingConvos(conversations);
+    coachingConvosRef.current = conversations;
     setPhase('feedback');
   };
 
   const handleFeedbackComplete = (conversations: Conversation[]) => {
-    setFeedbackConvos(conversations);
-    onEndMeeting(agenda, actionItems, coachingConvos, conversations);
+    onEndMeeting(agenda, actionItems, coachingConvosRef.current, conversations);
   }
 
   const renderAgendaPhase = () => (
@@ -105,8 +110,6 @@ const MeetingWorkspace: React.FC<MeetingWorkspaceProps> = (props) => {
         </div>
       </div>
       
-      <GrowthCareerSection meetingDetails={meetingDetails} />
-
       {previousMeeting && <HistoricalContext previousMeeting={previousMeeting} />}
 
       {phase === 'agenda' && renderAgendaPhase()}
