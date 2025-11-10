@@ -111,7 +111,10 @@ const App: React.FC = () => {
   const [selectedTeamMember, setSelectedTeamMember] = useState<TeamMember | null>(null);
 
   const [meetingDetails, setMeetingDetails] = useState<MeetingDetails | null>(null);
-  const [agenda, setAgenda] = useState<AgendaItem[]>([]);
+  // FIX: Refactored agenda state to be more localized to prevent app-wide re-renders.
+  const [initialAgenda, setInitialAgenda] = useState<AgendaItem[]>([]);
+  const [finalizedAgenda, setFinalizedAgenda] = useState<AgendaItem[]>([]);
+  
   const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [coachingConversations, setCoachingConversations] = useState<Conversation[]>([]);
   const [feedbackConversations, setFeedbackConversations] = useState<Conversation[]>([]);
@@ -314,7 +317,7 @@ const App: React.FC = () => {
       const employeeAgenda: AgendaItem[] = employeeAgendaPoints.map(point => ({ id: crypto.randomUUID(), text: point, completed: false, source: 'employee', notes: '' }));
 
       setMeetingDetails(details);
-      setAgenda([...aiAgenda, ...employeeAgenda]);
+      setInitialAgenda([...aiAgenda, ...employeeAgenda]);
       
       setView('workspace');
     } catch (err) {
@@ -362,8 +365,9 @@ const App: React.FC = () => {
     if (!meetingDetails) return;
     setIsLoading(true);
     setError(null);
-
-    setAgenda(finalAgenda);
+    
+    // FIX: Store the final state of the meeting before generating the summary.
+    setFinalizedAgenda(finalAgenda);
     setActionItems(finalActionItems);
     setCoachingConversations(coachingData);
     setFeedbackConversations(feedbackData);
@@ -393,7 +397,8 @@ const App: React.FC = () => {
   const resetState = () => {
     setSelectedTeamMember(null);
     setMeetingDetails(null);
-    setAgenda([]);
+    setInitialAgenda([]);
+    setFinalizedAgenda([]);
     setActionItems([]);
     setCoachingConversations([]);
     setFeedbackConversations([]);
@@ -403,7 +408,8 @@ const App: React.FC = () => {
 
   const handleFinishMeetingCycle = async () => {
     if (selectedTeamMember && meetingDetails && summaryData && currentUser) {
-        const comprehensiveNotes = constructFullNotes(agenda, coachingConversations, feedbackConversations);
+        // FIX: Use the finalized agenda from state for consistent note construction.
+        const comprehensiveNotes = constructFullNotes(finalizedAgenda, coachingConversations, feedbackConversations);
 
         const newMeetingRecord: Omit<MeetingRecord, 'id'> = {
             date: new Date().toISOString().split('T')[0],
@@ -522,8 +528,7 @@ const App: React.FC = () => {
         if (meetingDetails && selectedTeamMember) {
           return <MeetingWorkspace
             meetingDetails={meetingDetails}
-            agenda={agenda}
-            setAgenda={setAgenda}
+            initialAgenda={initialAgenda}
             actionItems={actionItems}
             setActionItems={setActionItems}
             onEndMeeting={handleEndMeeting}
