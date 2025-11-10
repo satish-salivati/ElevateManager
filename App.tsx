@@ -111,7 +111,6 @@ const App: React.FC = () => {
   const [selectedTeamMember, setSelectedTeamMember] = useState<TeamMember | null>(null);
 
   const [meetingDetails, setMeetingDetails] = useState<MeetingDetails | null>(null);
-  // FIX: Refactored agenda state to be more localized to prevent app-wide re-renders.
   const [initialAgenda, setInitialAgenda] = useState<AgendaItem[]>([]);
   const [finalizedAgenda, setFinalizedAgenda] = useState<AgendaItem[]>([]);
   
@@ -328,7 +327,6 @@ const App: React.FC = () => {
     }
   }, [selectedTeamMember]);
   
-  // FIX: Memoize constructFullNotes to ensure it's a stable dependency for other callbacks.
   const constructFullNotes = useCallback((
       agendaItems: AgendaItem[], 
       coachingConvos: Conversation[], 
@@ -367,12 +365,6 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     
-    // FIX: Store the final state of the meeting before generating the summary.
-    setFinalizedAgenda(finalAgenda);
-    setActionItems(finalActionItems);
-    setCoachingConversations(coachingData);
-    setFeedbackConversations(feedbackData);
-
     try {
       const comprehensiveNotes = constructFullNotes(finalAgenda, coachingData, feedbackData);
       const finalReport = await generateFinalReport({
@@ -381,11 +373,18 @@ const App: React.FC = () => {
         notes: comprehensiveNotes,
         actionItems: finalActionItems,
       });
+
+      // FIX: Batch all state updates after the await call to prevent premature re-renders.
+      setFinalizedAgenda(finalAgenda);
+      setActionItems(finalActionItems);
+      setCoachingConversations(coachingData);
+      setFeedbackConversations(feedbackData);
       setSummaryData({ 
         summary: finalReport.summary, 
         growthSuggestions: finalReport.growthSuggestions,
         actionItems: finalActionItems 
       });
+      
       setView('summary');
     } catch (err) {
       setError({type: 'FETCH_FAILED', message: 'Failed to generate summary and suggestions. Please try again.'});
@@ -409,7 +408,6 @@ const App: React.FC = () => {
 
   const handleFinishMeetingCycle = useCallback(async () => {
     if (selectedTeamMember && meetingDetails && summaryData && currentUser) {
-        // FIX: Use the finalized agenda from state for consistent note construction.
         const comprehensiveNotes = constructFullNotes(finalizedAgenda, coachingConversations, feedbackConversations);
 
         const newMeetingRecord: Omit<MeetingRecord, 'id'> = {
