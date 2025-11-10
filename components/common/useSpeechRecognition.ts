@@ -37,8 +37,10 @@ export const useSpeechRecognition = () => {
   }, []);
 
   const startListening = useCallback((onResult: (transcript: string) => void) => {
-    if (isListening) {
-      stopListening();
+    if (recognitionRef.current) {
+      // If an instance exists, it means we are listening. Calling stop() will 
+      // trigger the 'onend' event, which handles state cleanup.
+      recognitionRef.current.stop();
       return;
     }
     
@@ -48,6 +50,8 @@ export const useSpeechRecognition = () => {
     }
 
     const recognition = new SpeechRecognitionAPI();
+    recognitionRef.current = recognition;
+
     recognition.continuous = false; // Capture a single utterance
     recognition.interimResults = false;
     recognition.lang = 'en-US';
@@ -64,17 +68,18 @@ export const useSpeechRecognition = () => {
     recognition.onerror = (event: any) => {
       console.error('Speech recognition error:', event.error);
       setIsListening(false);
+      recognitionRef.current = null;
     };
 
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
       onResult(transcript);
-      // Automatically stop after a result is received, onend will fire
+      // 'onend' will be called automatically since continuous is false.
     };
     
     recognition.start();
-    recognitionRef.current = recognition;
-  }, [isListening, stopListening, hasSupport]);
+
+  }, [hasSupport]); // This function is now stable and doesn't depend on changing state.
 
   return {
     isListening,
