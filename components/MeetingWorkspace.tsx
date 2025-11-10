@@ -13,8 +13,7 @@ interface MeetingWorkspaceProps {
   initialAgenda: AgendaItem[];
   actionItems: ActionItem[];
   setActionItems: React.Dispatch<React.SetStateAction<ActionItem[]>>;
-  onEndMeeting: (agenda: AgendaItem[], actionItems: ActionItem[], coachingData: Conversation[], feedbackData: Conversation[]) => void;
-  isSummarizing: boolean;
+  onEndMeeting: (agenda: AgendaItem[], actionItems: ActionItem[], coachingData: Conversation[], feedbackData: Conversation[]) => Promise<void>;
   previousMeeting: PreviousMeeting | null;
   meetingHistory: MeetingRecord[];
 }
@@ -37,17 +36,15 @@ const MeetingWorkspace: React.FC<MeetingWorkspaceProps> = (props) => {
     actionItems, 
     setActionItems, 
     onEndMeeting,
-    isSummarizing,
     previousMeeting,
     meetingHistory,
   } = props;
 
-  // FIX: Manage agenda state locally to prevent app-wide re-renders on text input.
   const [agenda, setAgenda] = useState<AgendaItem[]>(initialAgenda);
   const [phase, setPhase] = useState<MeetingPhase>('agenda');
   const [coachingConvos, setCoachingConvos] = useState<Conversation[]>([]);
+  const [isSummarizing, setIsSummarizing] = useState(false);
   
-  // FIX: Use a ref to prevent stale state issues when passing coaching data to the final summary step.
   const coachingConvosRef = useRef<Conversation[]>([]);
 
   useEffect(() => {
@@ -62,8 +59,16 @@ const MeetingWorkspace: React.FC<MeetingWorkspaceProps> = (props) => {
     setPhase('feedback');
   };
 
-  const handleFeedbackComplete = (conversations: Conversation[]) => {
-    onEndMeeting(agenda, actionItems, coachingConvosRef.current, conversations);
+  const handleFeedbackComplete = async (conversations: Conversation[]) => {
+    setIsSummarizing(true);
+    try {
+      await onEndMeeting(agenda, actionItems, coachingConvosRef.current, conversations);
+    } catch (error) {
+      console.error("Summarization failed in workspace component:", error);
+      // Error is handled globally in App.tsx, but we need to stop the local loading indicator
+      setIsSummarizing(false);
+    }
+    // On success, no need to set isSummarizing to false because the component will unmount.
   }
 
   const renderAgendaPhase = () => (
