@@ -61,14 +61,20 @@ const handleGenerateAgenda = async (payload: { details: MeetingDetails }) => {
 
 const handleGetCoachingPrompts = async (payload: { details: MeetingDetails }) => {
     const { details } = payload;
-    const formatList = (list: string[], other?: string): string => [...list, other].filter(Boolean).join(', ') || 'Not specified';
     const prompt = `
-        You are an expert executive coach. Generate two simple, direct, and highly impactful coaching questions for a manager's 1-on-1 meeting.
-        Context: Employee ${details.employeeName} (${details.role}), Career Aspiration: "${details.careerAspirations}", Goal: "${details.goal}", Strengths: ${formatList(details.employeeStrengths, details.employeeStrengthsOther)}, Challenges: ${formatList(details.employeeChallenges, details.employeeChallengesOther)}, Sentiment: ${details.sentiment}.
-        
-        Instructions:
-        1. Questions must be simple, open-ended, contextual, and non-generic.
-        2. One question should connect their current goal to their long-term aspiration.
+        You are an expert executive coach. Your task is to generate two distinct, impactful coaching questions for a manager's 1-on-1 meeting.
+
+        **Meeting Context:**
+        - Employee's Goal: "${details.goal}"
+        - Employee's Key Challenge: "${(details.employeeChallenges[0] || 'not specified')}"
+        - Employee's Career Aspiration: "${details.careerAspirations}"
+
+        **Instructions:**
+        1.  Keep the questions **simple, direct, and open-ended**. They should be easy to understand and answer.
+        2.  **Do not** try to combine all the context points into a single question.
+        3.  Generate one question focused on their **current goal or challenge**.
+        4.  Generate a second, separate question focused on their **long-term career aspiration**.
+        5.  The questions should encourage reflection, not just a status update.
     `;
     const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash', 
