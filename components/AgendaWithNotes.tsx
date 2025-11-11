@@ -10,9 +10,10 @@ interface AgendaWithNotesProps {
 }
 
 const AgendaWithNotes: React.FC<AgendaWithNotesProps> = ({ agenda, setAgenda, employeeName }) => {
-  const { isListening, startListening, hasSupport } = useSpeechRecognition();
+  const { isListening, startListening, stopListening, hasSupport } = useSpeechRecognition();
   const [activeTranscriptionTarget, setActiveTranscriptionTarget] = useState<string | null>(null);
   const activeTargetRef = useRef<string | null>(null);
+  const noteSnapshotRef = useRef(''); // Stores text before transcription starts
 
   useEffect(() => {
     if (!isListening) {
@@ -48,26 +49,36 @@ const AgendaWithNotes: React.FC<AgendaWithNotesProps> = ({ agenda, setAgenda, em
       setAgenda([...agenda, newItem]);
   };
   
-  const handleTranscriptResult = useCallback((transcript: string) => {
+  const handleTranscriptUpdate = useCallback((transcript: string) => {
     const targetId = activeTargetRef.current;
     if (!targetId) return;
 
     setAgenda(prevAgenda => 
       prevAgenda.map(item => {
         if (item.id === targetId) {
-          const currentNotes = item.notes || '';
-          const newNotes = currentNotes ? `${currentNotes.trim()} ${transcript}` : transcript;
-          return { ...item, notes: newNotes.trim() };
+          const prefix = noteSnapshotRef.current ? noteSnapshotRef.current + ' ' : '';
+          return { ...item, notes: prefix + transcript };
         }
         return item;
       })
     );
   }, [setAgenda]);
   
-  const handleTranscribeClick = (itemId: string) => {
-    activeTargetRef.current = itemId;
-    setActiveTranscriptionTarget(itemId);
-    startListening(handleTranscriptResult);
+  const handleTranscribeClick = (itemId: string, currentNotes: string) => {
+    const isCurrentlyListeningToThis = isListening && activeTranscriptionTarget === itemId;
+  
+    // Always stop any active listening session first.
+    if (isListening) {
+      stopListening();
+    }
+  
+    // If the button clicked was not the one actively listening, start a new session.
+    if (!isCurrentlyListeningToThis) {
+      activeTargetRef.current = itemId;
+      setActiveTranscriptionTarget(itemId);
+      noteSnapshotRef.current = currentNotes.trim();
+      startListening(handleTranscriptUpdate);
+    }
   };
 
 
@@ -146,7 +157,7 @@ const AgendaWithNotes: React.FC<AgendaWithNotesProps> = ({ agenda, setAgenda, em
                         <div className="text-right mt-2">
                             <button
                                 type="button"
-                                onClick={() => handleTranscribeClick(item.id)}
+                                onClick={() => handleTranscribeClick(item.id, item.notes || '')}
                                 className={`inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-brand-primary ${isListeningToThis ? 'bg-red-100 text-red-700 border-red-300 animate-pulse' : 'bg-white hover:bg-slate-100 text-slate-600 border-slate-300'}`}
                                 title={isListeningToThis ? 'Stop Listening' : 'Transcribe Response'}
                             >
