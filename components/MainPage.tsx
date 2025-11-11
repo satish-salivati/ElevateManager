@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { TeamMember, AppError, Organization, AppUser } from '../types';
 import TeamListPage from './TeamListPage';
@@ -111,7 +112,13 @@ const MainPage: React.FC<MainPageProps> = (props) => {
             selectedManagerId={selectedManagerId}
             onSelectManager={onSelectManager}
             />}
-        {activeTab === 'explorer' && isAdmin && <DataExplorer teamMembers={dashboardTeamMembers} />}
+        {activeTab === 'explorer' && isAdmin && (
+          <DataExplorer
+            teamMembers={dashboardTeamMembers}
+            managers={managers}
+            organizations={organizations}
+          />
+        )}
       </div>
     </div>
   );
