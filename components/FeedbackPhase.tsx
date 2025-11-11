@@ -17,6 +17,7 @@ const FeedbackPhase: React.FC<FeedbackPhaseProps> = ({ onComplete, isSummarizing
   const [currentIndex, setCurrentIndex] = useState(0);
   const { isListening, startListening, hasSupport } = useSpeechRecognition();
   const currentIndexRef = useRef(currentIndex);
+  const responseSnapshotRef = useRef('');
 
   useEffect(() => {
     currentIndexRef.current = currentIndex;
@@ -38,19 +39,26 @@ const FeedbackPhase: React.FC<FeedbackPhaseProps> = ({ onComplete, isSummarizing
     setConversations(updatedConvos);
   };
   
-  const handleTranscriptResult = useCallback((transcript: string) => {
+  const handleTranscriptUpdate = useCallback((transcript: string) => {
     const index = currentIndexRef.current;
     setConversations(currentConversations => {
       if (index >= 0 && index < currentConversations.length) {
         const updatedConvos = [...currentConversations];
-        const currentResponse = updatedConvos[index].response || '';
-        const newResponse = currentResponse ? `${currentResponse.trim()} ${transcript}` : transcript;
-        updatedConvos[index] = { ...updatedConvos[index], response: newResponse.trim() };
+        const prefix = responseSnapshotRef.current ? responseSnapshotRef.current + ' ' : '';
+        updatedConvos[index] = { ...updatedConvos[index], response: prefix + transcript };
         return updatedConvos;
       }
       return currentConversations;
     });
   }, [setConversations]);
+
+  const handleTranscribeClick = () => {
+    if (!isListening) {
+      const currentResponse = conversations[currentIndex]?.response || '';
+      responseSnapshotRef.current = currentResponse.trim();
+    }
+    startListening(handleTranscriptUpdate);
+  };
 
   const handleAddQuestion = () => {
     setConversations([
@@ -126,7 +134,7 @@ const FeedbackPhase: React.FC<FeedbackPhaseProps> = ({ onComplete, isSummarizing
                {hasSupport && (
                 <button
                     type="button"
-                    onClick={() => startListening(handleTranscriptResult)}
+                    onClick={handleTranscribeClick}
                     className={`absolute bottom-3 right-3 inline-flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-md border transition-colors focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-brand-primary ${isListening ? 'bg-red-100 text-red-700 border-red-300 animate-pulse' : 'bg-white hover:bg-slate-100 text-slate-600 border-slate-300'}`}
                     title={isListening ? 'Stop Listening' : 'Transcribe Response'}
                 >
