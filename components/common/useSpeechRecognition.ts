@@ -36,10 +36,8 @@ export const useSpeechRecognition = () => {
     }
   }, []);
 
-  const startListening = useCallback((onResult: (transcript: string) => void) => {
+  const startListening = useCallback((onTranscriptUpdate: (fullTranscript: string) => void) => {
     if (recognitionRef.current) {
-      // If an instance exists, it means we are listening. Calling stop() will 
-      // trigger the 'onend' event, which handles state cleanup.
       recognitionRef.current.stop();
       return;
     }
@@ -52,9 +50,11 @@ export const useSpeechRecognition = () => {
     const recognition = new SpeechRecognitionAPI();
     recognitionRef.current = recognition;
 
-    recognition.continuous = false; // Capture a single utterance
-    recognition.interimResults = false;
+    recognition.continuous = true; // Capture continuously until stopped
+    recognition.interimResults = true; // Show results as they are being spoken
     recognition.lang = 'en-US';
+    
+    let finalTranscript = ''; // Accumulates final results for the duration of the session
 
     recognition.onstart = () => {
         setIsListening(true);
@@ -72,14 +72,23 @@ export const useSpeechRecognition = () => {
     };
 
     recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      onResult(transcript);
-      // 'onend' will be called automatically since continuous is false.
+      let interimTranscript = '';
+      // Loop through all results from the current recognition instance
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        const transcriptPart = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcriptPart;
+        } else {
+          interimTranscript += transcriptPart;
+        }
+      }
+      // The component receives the full string (all final parts + current interim part)
+      onTranscriptUpdate(finalTranscript + interimTranscript);
     };
     
     recognition.start();
 
-  }, [hasSupport]); // This function is now stable and doesn't depend on changing state.
+  }, [hasSupport]);
 
   return {
     isListening,
